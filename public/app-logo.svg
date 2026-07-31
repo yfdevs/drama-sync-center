@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">多平台剧集数据同步中心</title>
+  <desc id="desc">一只位于不规则蓝色数据网格上的微立体黑色俯视蚂蚁</desc>
+  <defs>
+    <linearGradient id="black-body" x1=".12" y1=".04" x2=".88" y2=".96">
+      <stop offset="0" stop-color="#737985"/>
+      <stop offset=".18" stop-color="#3b3e47"/>
+      <stop offset=".5" stop-color="#17181d"/>
+      <stop offset=".82" stop-color="#090a0d"/>
+      <stop offset="1" stop-color="#020203"/>
+    </linearGradient>
+    <radialGradient id="blue-node" cx=".32" cy=".22" r=".82">
+      <stop offset="0" stop-color="#a5f3fc"/>
+      <stop offset=".42" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </radialGradient>
+    <linearGradient id="data-packet" x1=".12" y1=".08" x2=".88" y2=".92">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset=".32" stop-color="#0ea5e9"/>
+      <stop offset=".72" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#172554"/>
+    </linearGradient>
+    <filter id="ant-depth" x="-35%" y="-35%" width="170%" height="185%">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="2.5" result="expanded"/>
+      <feFlood flood-color="#dbeafe" flood-opacity=".94" result="halo-color"/>
+      <feComposite in="halo-color" in2="expanded" operator="in" result="halo"/>
+      <feDropShadow in="SourceAlpha" dx="3" dy="9" stdDeviation="7" flood-color="#020617" flood-opacity=".48" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="halo"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="data-depth" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#1d4ed8" flood-opacity=".32"/>
+    </filter>
+  </defs>
+
+  <!-- Fill more of the icon canvas while preserving safe space for shadows. -->
+  <g transform="translate(-38 -35) scale(1.15 1.08)">
+  <!-- An incomplete pixel matrix represents distributed records converging behind the worker ant. -->
+  <g fill="url(#data-packet)" filter="url(#data-depth)">
+    <g opacity=".46">
+      <rect x="104" y="57" width="25" height="25" rx="5"/>
+      <rect x="148" y="57" width="25" height="25" rx="5"/>
+      <rect x="192" y="57" width="25" height="25" rx="5"/>
+      <rect x="324" y="57" width="25" height="25" rx="5"/>
+      <rect x="368" y="57" width="25" height="25" rx="5"/>
+      <rect x="412" y="57" width="25" height="25" rx="5"/>
+
+      <rect x="60" y="101" width="25" height="25" rx="5"/>
+      <rect x="104" y="101" width="25" height="25" rx="5"/>
+      <rect x="192" y="101" width="25" height="25" rx="5"/>
+      <rect x="280" y="101" width="25" height="25" rx="5"/>
+      <rect x="368" y="101" width="25" height="25" rx="5"/>
+      <rect x="412" y="101" width="25" height="25" rx="5"/>
+
+      <rect x="76" y="409" width="25" height="25" rx="5"/>
+      <rect x="120" y="409" width="25" height="25" rx="5"/>
+      <rect x="164" y="409" width="25" height="25" rx="5"/>
+      <rect x="208" y="409" width="25" height="25" rx="5"/>
+      <rect x="340" y="409" width="25" height="25" rx="5"/>
+      <rect x="384" y="409" width="25" height="25" rx="5"/>
+      <rect x="428" y="409" width="25" height="25" rx="5"/>
+
+      <rect x="104" y="453" width="25" height="25" rx="5"/>
+      <rect x="148" y="453" width="25" height="25" rx="5"/>
+      <rect x="192" y="453" width="25" height="25" rx="5"/>
+      <rect x="324" y="453" width="25" height="25" rx="5"/>
+      <rect x="368" y="453" width="25" height="25" rx="5"/>
+      <rect x="412" y="453" width="25" height="25" rx="5"/>
+    </g>
+
+    <g opacity=".64">
+      <rect x="112" y="145" width="25" height="25" rx="5"/>
+      <rect x="156" y="145" width="25" height="25" rx="5"/>
+      <rect x="332" y="145" width="25" height="25" rx="5"/>
+      <rect x="376" y="145" width="25" height="25" rx="5"/>
+
+      <rect x="176" y="189" width="25" height="25" rx="5"/>
+      <rect x="332" y="189" width="25" height="25" rx="5"/>
+
+      <rect x="164" y="277" width="25" height="25" rx="5"/>
+      <rect x="348" y="277" width="25" height="25" rx="5"/>
+
+      <rect x="100" y="365" width="25" height="25" rx="5"/>
+      <rect x="188" y="365" width="25" height="25" rx="5"/>
+      <rect x="320" y="365" width="25" height="25" rx="5"/>
+      <rect x="408" y="365" width="25" height="25" rx="5"/>
+    </g>
+
+    <g opacity=".82">
+      <rect x="88" y="233" width="25" height="25" rx="5"/>
+      <rect x="132" y="233" width="25" height="25" rx="5"/>
+      <rect x="176" y="233" width="25" height="25" rx="5"/>
+      <rect x="356" y="233" width="25" height="25" rx="5"/>
+      <rect x="400" y="233" width="25" height="25" rx="5"/>
+
+      <rect x="100" y="321" width="25" height="25" rx="5"/>
+      <rect x="144" y="321" width="25" height="25" rx="5"/>
+      <rect x="188" y="321" width="25" height="25" rx="5"/>
+      <rect x="320" y="321" width="25" height="25" rx="5"/>
+      <rect x="364" y="321" width="25" height="25" rx="5"/>
+      <rect x="408" y="321" width="25" height="25" rx="5"/>
+    </g>
+
+    <g opacity=".98">
+      <!-- Six anchor cells sit directly beneath the ant's feet. -->
+      <rect x="102" y="179" width="25" height="25" rx="5"/>
+      <rect x="386" y="179" width="25" height="25" rx="5"/>
+      <rect x="86" y="271" width="25" height="25" rx="5"/>
+      <rect x="414" y="271" width="25" height="25" rx="5"/>
+      <rect x="136" y="377" width="25" height="25" rx="5"/>
+      <rect x="350" y="377" width="25" height="25" rx="5"/>
+    </g>
+  </g>
+
+  <!-- Anatomical ant silhouette: head, thorax, two-node waist and abdomen. -->
+  <g filter="url(#ant-depth)">
+    <!-- Elbowed antennae -->
+    <g fill="none" stroke="url(#black-body)" stroke-linecap="round" stroke-linejoin="round" stroke-width="13">
+      <path d="M235 112 194 73l-50 10"/>
+      <path d="M277 112 318 73l50 10"/>
+    </g>
+    <circle cx="143" cy="83" r="7" fill="url(#black-body)"/>
+    <circle cx="369" cy="83" r="7" fill="url(#black-body)"/>
+
+    <!-- Six slender, jointed legs; every leg begins at the thorax. -->
+    <g fill="none" stroke="url(#black-body)" stroke-linecap="round" stroke-linejoin="round" stroke-width="14">
+      <path d="m229 218-60-38-55 11"/>
+      <path d="m220 248-69 4-53 31"/>
+      <path d="m232 273-53 55-30 62"/>
+      <path d="m283 218 60-38 55 11"/>
+      <path d="m292 248 69 4 53 31"/>
+      <path d="m280 273 53 55 30 62"/>
+    </g>
+
+    <!-- Head -->
+    <path d="M202 139c0-35 22-57 54-57s54 22 54 57c0 34-23 58-54 58s-54-24-54-58Z" fill="url(#black-body)"/>
+    <path d="M222 125c9-20 27-29 47-25" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="8" opacity=".24"/>
+    <path d="M296 119c5 12 7 27 3 43" fill="none" stroke="#60a5fa" stroke-linecap="round" stroke-width="4" opacity=".2"/>
+
+    <!-- Narrow thorax -->
+    <path d="M256 181c42 0 64 27 61 68-3 38-25 61-61 61s-58-23-61-61c-3-41 19-68 61-68Z" fill="url(#black-body)"/>
+    <path d="M216 221c10-20 27-29 48-28" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="9" opacity=".21"/>
+    <path d="M302 217c5 17 5 35-1 51" fill="none" stroke="#3b82f6" stroke-linecap="round" stroke-width="5" opacity=".2"/>
+
+    <!-- Distinctive two-node waist -->
+    <ellipse cx="256" cy="318" rx="21" ry="17" fill="url(#blue-node)"/>
+    <ellipse cx="256" cy="347" rx="19" ry="16" fill="url(#black-body)"/>
+
+    <!-- Tapered abdomen -->
+    <path d="M256 354c58 0 90 34 87 76-3 43-36 67-87 67s-84-24-87-67c-3-42 29-76 87-76Z" fill="url(#black-body)"/>
+    <path d="M204 410c9-27 31-42 61-43" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="10" opacity=".22"/>
+    <path d="M325 397c7 20 7 42-1 60" fill="none" stroke="#2563eb" stroke-linecap="round" stroke-width="5" opacity=".18"/>
+  </g>
+  </g>
+</svg>

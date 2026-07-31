@@ -1,0 +1,29 @@
+{
+  "name": "@drama-sync/platform-automation-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "多平台短剧数据抓取共享运行时",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "playwright": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "typescript": "^6.0.3",
+    "vite-plus": "catalog:"
+  }
+}

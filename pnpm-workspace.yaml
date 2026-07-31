@@ -1,0 +1,25 @@
+packages:
+  - packages/*
+
+allowBuilds:
+  electron: true
+  electron-winstaller: true
+  esbuild: true
+  sharp: true
+catalog:
+  playwright: latest
+  vite: npm:@voidzero-dev/vite-plus-core@latest
+  vitest: npm:@voidzero-dev/vite-plus-test@latest
+  vite-plus: latest
+  zod: latest
+overrides:
+  '@electron/get': 5.1.0
+  vite: 'catalog:'
+  vitest: 'catalog:'
+peerDependencyRules:
+  allowAny:
+    - vite
+    - vitest
+  allowedVersions:
+    vite: '*'
+    vitest: '*'

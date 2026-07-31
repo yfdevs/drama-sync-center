@@ -1,0 +1,29 @@
+{
+  "name": "@drama-sync/daren-center-automation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "达人中心后台自动化操作",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "login": "node dist/cli.js",
+    "test": "node --test tests/client.test.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "typescript": "^6.0.3",
+    "vite-plus": "catalog:"
+  }
+}
