@@ -1,65 +1,53 @@
 // @see - https://www.electron.build/configuration/configuration
 {
-  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.dramasync.center",
-  "asar": true,
-  "electronDownload": {
-    "mirror": "https://npmmirror.com/mirrors/electron/"
+  $schema: "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  appId: "com.dramasync.center",
+  asar: true,
+  electronDownload: {
+    mirror: "https://npmmirror.com/mirrors/electron/",
   },
-  "productName": "多平台剧集数据同步中心",
-  "directories": {
-    "buildResources": "build/icons",
-    "output": "release/${version}"
+  productName: "多平台剧数据同步中心",
+  directories: {
+    buildResources: "build/icons",
+    output: "release/${version}",
   },
-  "publish": [],
-  "files": [
-    "dist",
-    "dist-electron"
-  ],
-  "extraResources": [
+  publish: [],
+  files: ["dist", "dist-electron"],
+  extraResources: [
     {
-      "from": "build/automation",
-      "to": "automation"
+      from: "build/automation",
+      to: "automation",
     },
     {
-      "from": "build/playwright-browsers",
-      "to": "playwright-browsers",
-      "filter": [
-        "**/*",
-        "!chromium_headless_shell-*/**"
-      ]
-    }
+      from: "build/playwright-browsers",
+      to: "playwright-browsers",
+      filter: ["**/*", "!chromium_headless_shell-*/**"],
+    },
   ],
-  "mac": {
-    "icon": "icon.icns",
-    "target": [
-      "dmg"
-    ],
-    "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
+  mac: {
+    icon: "icon.icns",
+    target: ["dmg"],
+    artifactName: "${productName}-Mac-${version}-Installer.${ext}",
   },
-  "win": {
-    "icon": "icon.ico",
-    "target": [
+  win: {
+    icon: "icon.ico",
+    target: [
       {
-        "target": "nsis",
-        "arch": [
-          "x64"
-        ]
-      }
+        target: "nsis",
+        arch: ["x64"],
+      },
     ],
-    "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
+    artifactName: "${productName}-Windows-${version}-Setup.${ext}",
   },
-  "nsis": {
-    "oneClick": false,
-    "perMachine": false,
-    "allowToChangeInstallationDirectory": true,
-    "deleteAppDataOnUninstall": false
+  nsis: {
+    oneClick: false,
+    perMachine: false,
+    allowToChangeInstallationDirectory: true,
+    deleteAppDataOnUninstall: false,
   },
-  "linux": {
-    "icon": "png",
-    "target": [
-      "AppImage"
-    ],
-    "artifactName": "${productName}-Linux-${version}.${ext}"
-  }
+  linux: {
+    icon: "png",
+    target: ["AppImage"],
+    artifactName: "${productName}-Linux-${version}.${ext}",
+  },
 }

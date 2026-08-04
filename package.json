@@ -1,9 +1,10 @@
 {
   "name": "drama-sync-center",
-  "description": "多平台剧集数据同步中心",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
+  "description": "多平台剧数据同步中心",
   "type": "module",
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vp run app-dev",
     "build": "vp run app-package",
@@ -26,6 +27,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dayjs": "^1.11.21",
     "electron-log": "^5.4.4",
     "electron-store": "^11.0.2",
     "electron-window-state": "^5.0.3",
@@ -49,6 +51,5 @@
     "vite-plugin-electron": "^1.1.0",
     "vite-plus": "catalog:"
   },
-  "main": "dist-electron/main.js",
   "packageManager": "pnpm@11.18.0"
 }

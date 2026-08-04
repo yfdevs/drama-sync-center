@@ -1,4 +1,4 @@
-# 多平台剧集数据同步中心
+# 多平台剧数据同步中心
 
 ## 桌面端持久化与日志
 
@@ -6,15 +6,15 @@
 
 ```ts
 // 公共配置，持久化键为 global:language
-await window.desktop.store.set('language', 'zh-CN')
-const language = await window.desktop.store.get<string>('language')
+await window.desktop.store.set("language", "zh-CN");
+const language = await window.desktop.store.get<string>("language");
 
 // 平台配置，持久化键为 platform:bangumi:auto-sync
-await window.desktop.store.setForPlatform('bangumi', 'auto-sync', true)
-const autoSync = await window.desktop.store.getForPlatform<boolean>('bangumi', 'auto-sync')
+await window.desktop.store.setForPlatform("bangumi", "auto-sync", true);
+const autoSync = await window.desktop.store.getForPlatform<boolean>("bangumi", "auto-sync");
 
 // 同时输出到控制台和日志文件
-window.desktop.log.info('Sync started', { platform: 'bangumi' })
+window.desktop.log.info("Sync started", { platform: "bangumi" });
 ```
 
 平台 ID 与配置键统一使用小写 kebab-case。`electron-store` 数据是普通 JSON，不应用来明文保存密码或令牌；此类信息应改用系统安全凭据存储。
@@ -60,29 +60,26 @@ PLATFORM_PINDUODUO_ACCOUNT_SECONDARY_PHONE=手机号
 
 ```ts
 interface ListItem {
-  id: number
-  name: string
+  id: number;
+  name: string;
 }
 
-const result = await client.request<ListItem[]>('/api/b/example/list', {
-  method: 'GET',
+const result = await client.request<ListItem[]>("/api/b/example/list", {
+  method: "GET",
   query: { page: 1, pageSize: 20 },
-})
+});
 
-const created = await client.request<ListItem, { name: string }>(
-  '/api/b/example',
-  {
-    method: 'POST',
-    body: { name: '示例' },
-  },
-)
+const created = await client.request<ListItem, { name: string }>("/api/b/example", {
+  method: "POST",
+  body: { name: "示例" },
+});
 ```
 
 渲染进程通过受限的 preload API 调用：
 
 ```ts
-const login = await window.desktop.darenCenter.login()
-const currentUser = await window.desktop.darenCenter.me()
+const login = await window.desktop.darenCenter.login();
+const currentUser = await window.desktop.darenCenter.me();
 ```
 
 每次响应都包含 HTTP `status`、`statusText` 和后台响应 `body`。非成功状态会抛出 `DarenCenterApiError`，错误对象同样保留这些字段。当前按需求将登录信息作为随包环境资源提供，它不是加密的密钥存储；若安装包会分发给不可信用户，应改为首次启动时输入凭据，并使用系统安全凭据库保存。
@@ -130,12 +127,12 @@ If you are developing a production application, we recommend updating the config
 export default {
   // other rules...
   parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
+    ecmaVersion: "latest",
+    sourceType: "module",
+    project: ["./tsconfig.json", "./tsconfig.node.json"],
     tsconfigRootDir: __dirname,
   },
-}
+};
 ```
 
 - Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`

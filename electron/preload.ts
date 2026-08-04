@@ -21,6 +21,26 @@ const desktopApi: DesktopApi = {
     open: (platformId, accountId) =>
       ipcRenderer.invoke('platform:open', platformId, accountId),
   },
+  weixinChannels: {
+    chooseDownloadDirectory: () =>
+      ipcRenderer.invoke('weixin-channels:choose-download-directory'),
+    getSettings: () => ipcRenderer.invoke('weixin-channels:settings-get'),
+    onSyncEvent: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        callback(payload as Parameters<typeof callback>[0])
+      }
+      ipcRenderer.on('weixin-channels:sync-event', listener)
+      return () => {
+        ipcRenderer.off('weixin-channels:sync-event', listener)
+      }
+    },
+    openDownloadDirectory: () =>
+      ipcRenderer.invoke('weixin-channels:open-download-directory'),
+    saveSettings: (settings) =>
+      ipcRenderer.invoke('weixin-channels:settings-save', settings),
+    startSync: (mode) => ipcRenderer.invoke('weixin-channels:sync-start', mode),
+    stopSync: (mode) => ipcRenderer.invoke('weixin-channels:sync-stop', mode),
+  },
   store: {
     delete: (key) => ipcRenderer.invoke('store:delete', key),
     deleteForPlatform: (platformId, key) =>

@@ -1,4 +1,17 @@
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+export type WeixinChannelsSyncMode = 'assistant' | 'promote'
+export type WeixinChannelsDatePreset =
+  | 'previous-day'
+  | 'today'
+  | 'last-7-days'
+  | 'month-to-date'
+  | 'previous-month'
+
+export interface WeixinChannelsSettings {
+  assistantDatePreset: WeixinChannelsDatePreset
+  downloadDirectory?: string
+  promoteDatePreset: WeixinChannelsDatePreset
+}
 
 interface DarenCenterApiResponse<T> {
   clientType: string
@@ -32,6 +45,32 @@ interface PlatformCatalogItem {
   url: string
 }
 
+export interface WeixinChannelsSyncEvent {
+  accountName?: string
+  failureReason?: string
+  filename?: string
+  filePath?: string
+  message: string
+  mode?: WeixinChannelsSyncMode
+  result?: unknown
+  sourceId?: number
+  taskName?: string
+  taskType?: string
+  targetDate?: string
+  timestamp?: string
+  type:
+    | 'account-failed'
+    | 'downloaded'
+    | 'error'
+    | 'imported'
+    | 'logged-in'
+    | 'signed-out'
+    | 'started'
+    | 'stopped'
+    | 'waiting-for-scan'
+  uniqId?: string
+}
+
 export interface DesktopApi {
   darenCenter: {
     login(): Promise<DarenCenterRequestResult<DarenCenterLoginData>>
@@ -56,5 +95,23 @@ export interface DesktopApi {
     getForPlatform<T = unknown>(platformId: string, key: string): Promise<T | undefined>
     set(key: string, value: unknown): Promise<void>
     setForPlatform(platformId: string, key: string, value: unknown): Promise<void>
+  }
+  weixinChannels: {
+    chooseDownloadDirectory(): Promise<string | undefined>
+    getSettings(): Promise<WeixinChannelsSettings>
+    onSyncEvent(callback: (event: WeixinChannelsSyncEvent) => void): () => void
+    openDownloadDirectory(): Promise<{
+      error?: string
+      path: string
+    }>
+    saveSettings(settings: WeixinChannelsSettings): Promise<WeixinChannelsSettings>
+    startSync(mode: WeixinChannelsSyncMode): Promise<{
+      mode: WeixinChannelsSyncMode
+      running: boolean
+      started: boolean
+    }>
+    stopSync(mode?: WeixinChannelsSyncMode): Promise<{
+      stopped: boolean
+    }>
   }
 }

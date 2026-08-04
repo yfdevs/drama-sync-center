@@ -1,9 +1,17 @@
 import { ipcMain } from 'electron'
-import type { LogLevel } from './shared'
+import type { LogLevel, WeixinChannelsSyncMode } from './shared'
 import { getDarenCenterCurrentUser, loginToDarenCenter } from './daren-center'
 import { logger } from './logger'
 import { getPlatformCatalog, openPlatformSession } from './platforms'
 import { storeService } from './store'
+import {
+  chooseWeixinChannelsDownloadDirectory,
+  getWeixinChannelsSettings,
+  openWeixinChannelsDownloadDirectory,
+  saveWeixinChannelsSettings,
+  startWeixinChannelsSync,
+  stopWeixinChannelsSync,
+} from './weixin-channels-sync'
 
 const IPC_CHANNELS = {
   darenCenterLogin: 'daren-center:login',
@@ -11,6 +19,13 @@ const IPC_CHANNELS = {
   log: 'app:log',
   platformList: 'platform:list',
   platformOpen: 'platform:open',
+  weixinChannelsSyncEvent: 'weixin-channels:sync-event',
+  weixinChannelsChooseDownloadDirectory: 'weixin-channels:choose-download-directory',
+  weixinChannelsOpenDownloadDirectory: 'weixin-channels:open-download-directory',
+  weixinChannelsSettingsGet: 'weixin-channels:settings-get',
+  weixinChannelsSettingsSave: 'weixin-channels:settings-save',
+  weixinChannelsSyncStart: 'weixin-channels:sync-start',
+  weixinChannelsSyncStop: 'weixin-channels:sync-stop',
   storeDelete: 'store:delete',
   storeDeleteForPlatform: 'store:delete-for-platform',
   storeGet: 'store:get',
@@ -37,6 +52,30 @@ export function registerIpcHandlers(): void {
     IPC_CHANNELS.platformOpen,
     (_event, platformId: string, accountId: string) =>
       openPlatformSession(platformId, accountId),
+  )
+  ipcMain.handle(
+    IPC_CHANNELS.weixinChannelsSyncStart,
+    (event, mode: WeixinChannelsSyncMode) =>
+      startWeixinChannelsSync(
+        {
+          sendEvent: (payload) =>
+            event.sender.send(IPC_CHANNELS.weixinChannelsSyncEvent, payload),
+        },
+        mode,
+      ),
+  )
+  ipcMain.handle(IPC_CHANNELS.weixinChannelsSyncStop, (_event, mode?: WeixinChannelsSyncMode) =>
+    stopWeixinChannelsSync(mode),
+  )
+  ipcMain.handle(IPC_CHANNELS.weixinChannelsSettingsGet, () => getWeixinChannelsSettings())
+  ipcMain.handle(IPC_CHANNELS.weixinChannelsSettingsSave, (_event, settings) =>
+    saveWeixinChannelsSettings(settings),
+  )
+  ipcMain.handle(IPC_CHANNELS.weixinChannelsChooseDownloadDirectory, () =>
+    chooseWeixinChannelsDownloadDirectory(),
+  )
+  ipcMain.handle(IPC_CHANNELS.weixinChannelsOpenDownloadDirectory, () =>
+    openWeixinChannelsDownloadDirectory(),
   )
 
   ipcMain.handle(IPC_CHANNELS.storeGet, (_event, key: string) => storeService.get(key))

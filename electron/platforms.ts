@@ -57,6 +57,10 @@ function loadEnvironment(): NodeJS.ProcessEnv {
   return loadPlatformEnvironmentFile(environmentFile())
 }
 
+export function loadPlatformAutomationEnvironment(): NodeJS.ProcessEnv {
+  return loadEnvironment()
+}
+
 export function getPlatformCatalog(): PlatformCatalogItem[] {
   const environment = loadEnvironment()
 

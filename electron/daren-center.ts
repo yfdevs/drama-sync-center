@@ -18,7 +18,7 @@ function environmentFile(): string {
   return path.join(process.env.APP_ROOT, '.env.production')
 }
 
-function getClient(): DarenCenterClient {
+export function getDarenCenterClient(): DarenCenterClient {
   if (!client) {
     client = new DarenCenterClient(
       loadDarenCenterConfig({
@@ -32,7 +32,7 @@ function getClient(): DarenCenterClient {
 
 export async function loginToDarenCenter(): Promise<RequestResult<LoginData>> {
   logger.info('Starting Daren Center API login')
-  const result = await getClient().login()
+  const result = await getDarenCenterClient().login()
   logger.info('Daren Center API login completed', {
     loginId: result.body.data?.loginId,
     status: result.status,
@@ -41,7 +41,7 @@ export async function loginToDarenCenter(): Promise<RequestResult<LoginData>> {
 }
 
 export async function getDarenCenterCurrentUser(): Promise<RequestResult<unknown>> {
-  const result = await getClient().getCurrentUser()
+  const result = await getDarenCenterClient().getCurrentUser()
   logger.info('Daren Center current-user request completed', {
     status: result.status,
   })

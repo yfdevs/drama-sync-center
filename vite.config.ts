@@ -129,6 +129,9 @@ export default defineConfig({
                   filter: [
                     '@drama-sync/daren-center-automation',
                     /^@drama-sync\/platform-/,
+                    /^chromium-bidi/,
+                    /^playwright/,
+                    /^playwright-core/,
                   ],
                 }),
               ],
