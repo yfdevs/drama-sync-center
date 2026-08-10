@@ -16,6 +16,21 @@ const desktopApi: DesktopApi = {
     info: log('info'),
     warn: log('warn'),
   },
+  meituan: {
+    onSyncEvent: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        callback(payload as Parameters<typeof callback>[0])
+      }
+      ipcRenderer.on('meituan:sync-event', listener)
+      return () => {
+        ipcRenderer.off('meituan:sync-event', listener)
+      }
+    },
+    openDownloadDirectory: () =>
+      ipcRenderer.invoke('meituan:open-download-directory'),
+    startSync: () => ipcRenderer.invoke('meituan:sync-start'),
+    stopSync: () => ipcRenderer.invoke('meituan:sync-stop'),
+  },
   platforms: {
     list: () => ipcRenderer.invoke('platform:list'),
     open: (platformId, accountId) =>

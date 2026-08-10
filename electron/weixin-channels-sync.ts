@@ -11,6 +11,7 @@ import { getDarenCenterClient } from "./daren-center";
 import { logger } from "./logger";
 import { loadPlatformAutomationEnvironment } from "./platforms";
 import type {
+  WeixinChannelsCustomDateRange,
   WeixinChannelsDatePreset,
   WeixinChannelsSettings,
   WeixinChannelsSyncEvent,
@@ -114,17 +115,37 @@ function normalizeWeixinChannelsSettings(value: unknown): WeixinChannelsSettings
       : undefined;
 
   return {
+    assistantCustomDateRange: normalizeCustomDateRange(raw.assistantCustomDateRange),
     assistantDatePreset: normalizeDatePreset(raw.assistantDatePreset),
     downloadDirectory,
+    promoteCustomDateRange: normalizeCustomDateRange(raw.promoteCustomDateRange),
     promoteDatePreset: normalizeDatePreset(raw.promoteDatePreset),
   };
+}
+
+function normalizeCustomDateRange(value: unknown): WeixinChannelsCustomDateRange | undefined {
+  if (!isRecord(value) || !isIsoDate(value.startDate) || !isIsoDate(value.endDate)) {
+    return undefined;
+  }
+
+  return {
+    endDate: value.endDate,
+    startDate: value.startDate,
+  };
+}
+
+function isIsoDate(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    dayjs(value).format("YYYY-MM-DD") === value;
 }
 
 function normalizeDatePreset(value: unknown): WeixinChannelsDatePreset {
   return value === "today" ||
     value === "last-7-days" ||
     value === "month-to-date" ||
-    value === "previous-month"
+    value === "previous-month" ||
+    value === "custom"
     ? value
     : defaultSettings.assistantDatePreset;
 }
@@ -143,7 +164,23 @@ interface ResolvedDateRange {
   startDate: string;
 }
 
-function resolveDateRange(preset: WeixinChannelsDatePreset): ResolvedDateRange {
+function resolveDateRange(
+  preset: WeixinChannelsDatePreset,
+  customRange?: WeixinChannelsCustomDateRange,
+): ResolvedDateRange {
+  if (preset === "custom") {
+    if (!customRange || customRange.endDate < customRange.startDate) {
+      throw new Error("自定义日期范围无效，请重新配置开始日期和结束日期");
+    }
+
+    return {
+      ...customRange,
+      label: customRange.startDate === customRange.endDate
+        ? customRange.startDate
+        : `${customRange.startDate}至${customRange.endDate}`,
+    };
+  }
+
   const today = dayjs();
   let start = today;
   let end = today;
@@ -263,7 +300,10 @@ async function runWeixinChannelsSyncLoop(
 ): Promise<void> {
   const processedUniqIds = new Set<string>();
   const settings = getWeixinChannelsSettings();
-  const dateRange = resolveDateRange(settings.assistantDatePreset);
+  const dateRange = resolveDateRange(
+    settings.assistantDatePreset,
+    settings.assistantCustomDateRange,
+  );
   const environment = loadPlatformAutomationEnvironment();
   const config = loadPlatformRuntimeConfig(weixinChannelsPlatform, "operator-1", environment);
   const profileRoot = path.isAbsolute(config.profileRoot)
@@ -504,7 +544,10 @@ async function runWeixinPromoteSyncLoop(
 ): Promise<void> {
   const processedUniqIds = new Set<string>();
   const settings = getWeixinChannelsSettings();
-  const dateRange = resolveDateRange(settings.promoteDatePreset);
+  const dateRange = resolveDateRange(
+    settings.promoteDatePreset,
+    settings.promoteCustomDateRange,
+  );
   const environment = loadPlatformAutomationEnvironment();
   const config = loadPlatformRuntimeConfig(weixinChannelsPlatform, "operator-1", environment);
   const profileRoot = path.isAbsolute(config.profileRoot)

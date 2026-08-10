@@ -12,7 +12,8 @@
   },
   "files": ["dist"],
   "dependencies": {
-    "@drama-sync/platform-automation-core": "workspace:*"
+    "@drama-sync/platform-automation-core": "workspace:*",
+    "playwright": "catalog:"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

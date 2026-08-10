@@ -8,9 +8,9 @@ allowBuilds:
   sharp: true
 catalog:
   playwright: latest
-  vite: npm:@voidzero-dev/vite-plus-core@latest
+  vite: npm:@voidzero-dev/vite-plus-core@0.2.6
   vitest: npm:@voidzero-dev/vite-plus-test@latest
-  vite-plus: latest
+  vite-plus: 0.2.6
   zod: latest
 overrides:
   '@electron/get': 5.1.0

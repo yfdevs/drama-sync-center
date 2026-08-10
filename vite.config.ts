@@ -122,7 +122,10 @@ export default defineConfig({
             entry: 'electron/main.ts',
             vite: {
               build: {
-                emptyOutDir: true,
+                // The main and preload builds share dist-electron and may run in
+                // parallel. Clearing it here can delete preload.mjs after it has
+                // been emitted, leaving window.desktop unavailable at runtime.
+                emptyOutDir: false,
               },
               plugins: [
                 notBundle({

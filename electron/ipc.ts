@@ -2,6 +2,11 @@ import { ipcMain } from 'electron'
 import type { LogLevel, WeixinChannelsSyncMode } from './shared'
 import { getDarenCenterCurrentUser, loginToDarenCenter } from './daren-center'
 import { logger } from './logger'
+import {
+  openMeituanDownloadDirectory,
+  startMeituanSync,
+  stopMeituanSync,
+} from './meituan-sync'
 import { getPlatformCatalog, openPlatformSession } from './platforms'
 import { storeService } from './store'
 import {
@@ -17,6 +22,10 @@ const IPC_CHANNELS = {
   darenCenterLogin: 'daren-center:login',
   darenCenterMe: 'daren-center:me',
   log: 'app:log',
+  meituanOpenDownloadDirectory: 'meituan:open-download-directory',
+  meituanSyncEvent: 'meituan:sync-event',
+  meituanSyncStart: 'meituan:sync-start',
+  meituanSyncStop: 'meituan:sync-stop',
   platformList: 'platform:list',
   platformOpen: 'platform:open',
   weixinChannelsSyncEvent: 'weixin-channels:sync-event',
@@ -47,6 +56,16 @@ function writeRendererLog(level: LogLevel, message: string, details?: unknown): 
 export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.darenCenterLogin, () => loginToDarenCenter())
   ipcMain.handle(IPC_CHANNELS.darenCenterMe, () => getDarenCenterCurrentUser())
+  ipcMain.handle(IPC_CHANNELS.meituanSyncStart, (event) =>
+    startMeituanSync({
+      sendEvent: (payload) =>
+        event.sender.send(IPC_CHANNELS.meituanSyncEvent, payload),
+    }),
+  )
+  ipcMain.handle(IPC_CHANNELS.meituanSyncStop, () => stopMeituanSync())
+  ipcMain.handle(IPC_CHANNELS.meituanOpenDownloadDirectory, () =>
+    openMeituanDownloadDirectory(),
+  )
   ipcMain.handle(IPC_CHANNELS.platformList, () => getPlatformCatalog())
   ipcMain.handle(
     IPC_CHANNELS.platformOpen,

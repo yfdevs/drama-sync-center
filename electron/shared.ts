@@ -6,10 +6,18 @@ export type WeixinChannelsDatePreset =
   | 'last-7-days'
   | 'month-to-date'
   | 'previous-month'
+  | 'custom'
+
+export interface WeixinChannelsCustomDateRange {
+  endDate: string
+  startDate: string
+}
 
 export interface WeixinChannelsSettings {
+  assistantCustomDateRange?: WeixinChannelsCustomDateRange
   assistantDatePreset: WeixinChannelsDatePreset
   downloadDirectory?: string
+  promoteCustomDateRange?: WeixinChannelsCustomDateRange
   promoteDatePreset: WeixinChannelsDatePreset
 }
 
@@ -71,12 +79,52 @@ export interface WeixinChannelsSyncEvent {
   uniqId?: string
 }
 
+export interface MeituanSyncEvent {
+  accountName?: string
+  failureReason?: string
+  filename?: string
+  filePath?: string
+  message: string
+  pageCount?: number
+  pageNumber?: number
+  result?: unknown
+  taskName?: string
+  taskType?: string
+  timestamp?: string
+  total?: number
+  type:
+    | 'account-failed'
+    | 'downloaded'
+    | 'error'
+    | 'imported'
+    | 'logged-in'
+    | 'progress'
+    | 'started'
+    | 'stopped'
+    | 'waiting-for-login'
+  uniqId?: string
+}
+
 export interface DesktopApi {
   darenCenter: {
     login(): Promise<DarenCenterRequestResult<DarenCenterLoginData>>
     me<T = unknown>(): Promise<DarenCenterRequestResult<T>>
   }
   log: Record<LogLevel, (message: string, details?: unknown) => void>
+  meituan: {
+    onSyncEvent(callback: (event: MeituanSyncEvent) => void): () => void
+    openDownloadDirectory(): Promise<{
+      error?: string
+      path: string
+    }>
+    startSync(): Promise<{
+      running: boolean
+      started: boolean
+    }>
+    stopSync(): Promise<{
+      stopped: boolean
+    }>
+  }
   platforms: {
     list(): Promise<PlatformCatalogItem[]>
     open(

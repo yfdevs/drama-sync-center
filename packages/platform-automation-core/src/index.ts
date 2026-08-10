@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import type {
   BrowserContext,
-  BrowserContextOptions,
+  BrowserType,
   Page,
 } from 'playwright'
 import { parse } from 'dotenv'
@@ -37,7 +37,9 @@ export interface PlatformRuntimeConfig {
 }
 
 export interface OpenPersistentPlatformSessionOptions {
-  browserOptions?: BrowserContextOptions
+  browserOptions?: NonNullable<
+    Parameters<BrowserType['launchPersistentContext']>[1]
+  >
   browsersPath?: string
   environment?: NodeJS.ProcessEnv
   headless?: boolean

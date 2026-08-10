@@ -54,6 +54,14 @@ PLATFORM_PINDUODUO_ACCOUNT_SECONDARY_PHONE=手机号
 
 每个账号的登录状态分别保存在 `<PLATFORM_BROWSER_PROFILE_ROOT>/<平台 ID>/<账号 ID>`。Electron 中相对路径基于应用 `userData` 目录解析，安装升级不会清除登录状态。
 
+美团直接使用手机号作为账号 ID，不需要再配置账号别名和单独的手机号字段：
+
+```dotenv
+PLATFORM_MEITUAN_ACCOUNT_IDS=手机号1,手机号2
+```
+
+新增美团账号只需把手机号追加到该变量；应用重启后会自动更新账号数量，并为每个手机号创建独立的 persistent profile。
+
 客户端会保存登录接口返回的 `tokenValue`，后续请求自动添加到 `Authorization` 请求头。当接口返回 `401 Unauthorized` 时，会自动重新登录并将原请求重试一次。多个并发请求同时遇到 401 时只会执行一次重新登录。
 
 后续接口统一通过泛型 `request<TResponse, TBody>()` 添加薄封装：
