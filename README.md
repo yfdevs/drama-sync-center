@@ -144,6 +144,8 @@ pnpm secret:update -- -Upload
 
 脚本会拒绝在工作区有未提交改动时运行，然后创建并推送 `v<版本号>` 标签。GitHub Actions 会在 Windows 环境构建安装包，并将安装程序、blockmap 和 `latest.yml` 发布到对应 Release。自动更新依赖这些文件，请勿单独删除。
 
+electron-builder 在构建阶段固定使用 `--publish never`，只负责生成发布文件；Release 的创建和上传统一由工作流最后的 `gh release create` 完成，因此不需要配置个人访问令牌 `GH_TOKEN`。
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
