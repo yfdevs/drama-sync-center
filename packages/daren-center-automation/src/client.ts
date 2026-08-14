@@ -20,6 +20,34 @@ export interface ImportCopyrightDataOptions {
   sourceId: number | string;
 }
 
+export interface ImportKuaishouRecordsOptions {
+  file: Blob;
+  filename?: string;
+}
+
+export interface ImportDramaHeatingActionsOptions {
+  file: Blob;
+  filename?: string;
+}
+
+export interface ImportDramaHeatingActionsResult {
+  receivedCount: number;
+  savedCount: number;
+}
+
+export interface ImportCopyrightDataError {
+  columnName: string;
+  message: string;
+  rowNumber: number;
+}
+
+export interface ImportCopyrightDataResult {
+  errors: ImportCopyrightDataError[];
+  failCount: number;
+  successCount: number;
+  totalCount: number;
+}
+
 export interface DataSource {
   copyrightPartyId: number;
   createdAt: string;
@@ -60,6 +88,10 @@ export interface DarenCenterRequestOptions<TBody = never> {
 
 export interface DarenCenterClientOptions {
   fetch?: typeof fetch;
+  onAuthEvent?: (event: {
+    status?: number;
+    type: "login-started" | "login-succeeded" | "token-refresh";
+  }) => void;
 }
 
 export class DarenCenterApiError<T = unknown> extends Error {
@@ -89,6 +121,7 @@ export class DarenCenterDataSourceNotFoundError extends Error {
 export class DarenCenterClient {
   readonly #config: DarenCenterConfig;
   readonly #fetchImplementation: typeof fetch;
+  readonly #onAuthEvent?: DarenCenterClientOptions["onAuthEvent"];
   #loginPromise?: Promise<RequestResult<LoginData>>;
   #tokenName = "Authorization";
   #tokenValue?: string;
@@ -96,6 +129,7 @@ export class DarenCenterClient {
   constructor(config: DarenCenterConfig, options: DarenCenterClientOptions = {}) {
     this.#config = config;
     this.#fetchImplementation = options.fetch ?? globalThis.fetch;
+    this.#onAuthEvent = options.onAuthEvent;
   }
 
   get authenticated(): boolean {
@@ -154,7 +188,9 @@ export class DarenCenterClient {
     }
   }
 
-  async importCopyrightData(options: ImportCopyrightDataOptions): Promise<RequestResult<boolean>> {
+  async importCopyrightData(
+    options: ImportCopyrightDataOptions,
+  ): Promise<RequestResult<ImportCopyrightDataResult>> {
     const formData = new FormData();
     const filename =
       options.filename ??
@@ -165,25 +201,49 @@ export class DarenCenterClient {
     formData.append("files", options.file, filename);
     formData.append("sourceId", String(options.sourceId));
 
-    // Test
-    // oxlint-disable-next-line no-debugger
-    debugger;
-
-    return Promise.resolve({
-      body: {
-        service: "rights-management-admin",
-        clientType: "B",
-        message: "导入成功",
-        data: true,
-      },
-      status: 200,
-      statusText: "OK",
+    return this.request<ImportCopyrightDataResult, FormData>("/api/b/copyright-data/import", {
+      body: formData,
+      method: "POST",
     });
+  }
 
-    // return this.request<boolean, FormData>("/api/b/copyright-data/import", {
-    //   body: formData,
-    //   method: "POST",
-    // });
+  async importKuaishouRecords(
+    options: ImportKuaishouRecordsOptions,
+  ): Promise<RequestResult<ImportCopyrightDataResult>> {
+    const formData = new FormData();
+    const filename =
+      options.filename ??
+      ("name" in options.file && typeof options.file.name === "string"
+        ? options.file.name
+        : "kuaishou-records.xlsx");
+
+    formData.append("file", options.file, filename);
+
+    return this.request<ImportCopyrightDataResult, FormData>("/api/b/kuaishou-records/import", {
+      body: formData,
+      method: "POST",
+    });
+  }
+
+  async importDramaHeatingActions(
+    options: ImportDramaHeatingActionsOptions,
+  ): Promise<RequestResult<ImportDramaHeatingActionsResult>> {
+    const formData = new FormData();
+    const filename =
+      options.filename ??
+      ("name" in options.file && typeof options.file.name === "string"
+        ? options.file.name
+        : "drama-heating-actions.csv");
+
+    formData.append("file", options.file, filename);
+
+    return this.request<ImportDramaHeatingActionsResult, FormData>(
+      "/api/b/drama-heating/actions/import",
+      {
+        body: formData,
+        method: "POST",
+      },
+    );
   }
 
   /**
@@ -218,6 +278,7 @@ export class DarenCenterClient {
     const result = await this.#fetch<TResponse, TBody>(path, options, requestToken);
 
     if (result.status === 401 && authenticated && retryUnauthorized) {
+      this.#onAuthEvent?.({ status: result.status, type: "token-refresh" });
       // Another concurrent request may already have refreshed the token.
       if (this.#tokenValue === requestToken) {
         this.#tokenValue = undefined;
@@ -249,6 +310,7 @@ export class DarenCenterClient {
   }
 
   async #performLogin(): Promise<RequestResult<LoginData>> {
+    this.#onAuthEvent?.({ type: "login-started" });
     const result = await this.#fetch<LoginData, { password: string; username: string }>(
       "/api/b/auth/login",
       {
@@ -280,6 +342,7 @@ export class DarenCenterClient {
 
     this.#tokenName = loginData.tokenName || "Authorization";
     this.#tokenValue = loginData.tokenValue;
+    this.#onAuthEvent?.({ status: result.status, type: "login-succeeded" });
 
     return result;
   }

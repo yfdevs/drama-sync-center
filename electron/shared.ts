@@ -8,9 +8,19 @@ export type WeixinChannelsDatePreset =
   | 'previous-month'
   | 'custom'
 
+export type KuaishouDatePreset = WeixinChannelsDatePreset
+
 export interface WeixinChannelsCustomDateRange {
   endDate: string
   startDate: string
+}
+
+export type KuaishouCustomDateRange = WeixinChannelsCustomDateRange
+
+export interface KuaishouSettings {
+  customDateRange?: KuaishouCustomDateRange
+  datePreset: KuaishouDatePreset
+  downloadDirectory?: string
 }
 
 export interface WeixinChannelsSettings {
@@ -105,12 +115,53 @@ export interface MeituanSyncEvent {
   uniqId?: string
 }
 
+export interface KuaishouSyncEvent {
+  accountName?: string
+  failureReason?: string
+  filename?: string
+  filePath?: string
+  message: string
+  result?: unknown
+  sourceId?: number
+  targetDate?: string
+  taskName?: string
+  taskType?: string
+  timestamp?: string
+  type:
+    | 'account-failed'
+    | 'downloaded'
+    | 'error'
+    | 'imported'
+    | 'logged-in'
+    | 'started'
+    | 'stopped'
+    | 'waiting-for-login'
+  uniqId?: string
+}
+
 export interface DesktopApi {
   darenCenter: {
     login(): Promise<DarenCenterRequestResult<DarenCenterLoginData>>
     me<T = unknown>(): Promise<DarenCenterRequestResult<T>>
   }
   log: Record<LogLevel, (message: string, details?: unknown) => void>
+  kuaishou: {
+    chooseDownloadDirectory(): Promise<string | undefined>
+    getSettings(): Promise<KuaishouSettings>
+    onSyncEvent(callback: (event: KuaishouSyncEvent) => void): () => void
+    openDownloadDirectory(): Promise<{
+      error?: string
+      path: string
+    }>
+    saveSettings(settings: KuaishouSettings): Promise<KuaishouSettings>
+    startSync(): Promise<{
+      running: boolean
+      started: boolean
+    }>
+    stopSync(): Promise<{
+      stopped: boolean
+    }>
+  }
   meituan: {
     onSyncEvent(callback: (event: MeituanSyncEvent) => void): () => void
     openDownloadDirectory(): Promise<{

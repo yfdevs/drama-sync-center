@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import type {
+  KuaishouSettings,
+  KuaishouSyncEvent,
   MeituanSyncEvent,
   WeixinChannelsCustomDateRange,
   WeixinChannelsDatePreset,
@@ -7,7 +9,14 @@ import type {
   WeixinChannelsSyncEvent,
   WeixinChannelsSyncMode,
 } from "../electron/shared";
-import { InfoCircleOutlined } from "@ant-design/icons";
+import {
+  DatabaseOutlined,
+  DeleteOutlined,
+  FolderOpenOutlined,
+  InfoCircleOutlined,
+  SettingOutlined,
+  SyncOutlined,
+} from "@ant-design/icons";
 import {
   Alert,
   Badge,
@@ -15,7 +24,9 @@ import {
   ConfigProvider,
   DatePicker,
   Drawer,
+  Empty,
   Input,
+  Popconfirm,
   Radio,
   Table,
   Tooltip,
@@ -24,8 +35,6 @@ import type { TableColumnsType } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
-
-import { cn } from "@/lib/utils";
 
 dayjs.locale("zh-cn");
 
@@ -87,8 +96,14 @@ const defaultWeixinSettings: WeixinChannelsSettings = {
   assistantDatePreset: "previous-day",
   promoteDatePreset: "previous-day",
 };
+const defaultKuaishouSettings: KuaishouSettings = {
+  datePreset: "previous-day",
+};
 
 function App() {
+  const [kuaishouSettings, setKuaishouSettings] = useState(defaultKuaishouSettings);
+  const [kuaishouSettingsOpen, setKuaishouSettingsOpen] = useState(false);
+  const [kuaishouSyncRunning, setKuaishouSyncRunning] = useState(false);
   const [meituanSyncRunning, setMeituanSyncRunning] = useState(false);
   const [platformItems, setPlatformItems] = useState(platforms);
   const [weixinSyncRunning, setWeixinSyncRunning] = useState<Record<WeixinChannelsSyncMode, boolean>>({
@@ -122,6 +137,42 @@ function App() {
         const message = error instanceof Error ? error.message : String(error);
         setWeixinSyncMessage(`平台账号配置读取失败：${message}`);
       });
+  }, []);
+
+  useEffect(() => {
+    if (!window.desktop?.kuaishou) {
+      return undefined;
+    }
+
+    void window.desktop.kuaishou.getSettings().then(setKuaishouSettings);
+
+    return window.desktop.kuaishou.onSyncEvent((event) => {
+      setWeixinSyncMessage(event.message);
+
+      if (event.type === "started" || event.type === "waiting-for-login") {
+        setKuaishouSyncRunning(true);
+      }
+      if (event.type === "waiting-for-login") {
+        setPlatformItems((items) => items.map((item) =>
+          item.id === "kuaishou" ? { ...item, status: "needs-login" } : item
+        ));
+      }
+      if (event.type === "logged-in" || event.type === "imported") {
+        setPlatformItems((items) => items.map((item) =>
+          item.id === "kuaishou" ? { ...item, status: "normal" } : item
+        ));
+      }
+      if (event.type === "stopped" || event.type === "error") {
+        setKuaishouSyncRunning(false);
+      }
+      if (event.type === "imported" || event.type === "account-failed") {
+        setImportRecords((records) => {
+          const nextRecords = [createKuaishouImportRecord(event), ...records].slice(0, 50);
+          saveImportRecords(nextRecords);
+          return nextRecords;
+        });
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -237,6 +288,40 @@ function App() {
     }
   }
 
+  async function startKuaishouSync() {
+    if (!window.desktop?.kuaishou) {
+      setWeixinSyncMessage("当前环境不支持桌面自动化");
+      return;
+    }
+
+    setKuaishouSyncRunning(true);
+    setWeixinSyncMessage("正在启动快手 IAA 短剧数据处理任务");
+    const result = await window.desktop.kuaishou.startSync();
+    if (!result.started && result.running) {
+      setWeixinSyncMessage("快手数据处理任务正在运行");
+    }
+  }
+
+  async function saveKuaishouSettings(settings: KuaishouSettings) {
+    if (!window.desktop?.kuaishou) {
+      return;
+    }
+
+    const saved = await window.desktop.kuaishou.saveSettings(settings);
+    setKuaishouSettings(saved);
+    setKuaishouSettingsOpen(false);
+    setWeixinSyncMessage("快手处理配置已保存");
+  }
+
+  async function openKuaishouDownloadDirectory() {
+    if (!window.desktop?.kuaishou) {
+      return;
+    }
+
+    const result = await window.desktop.kuaishou.openDownloadDirectory();
+    setWeixinSyncMessage(result.error ? `打开文件夹失败：${result.error}` : `已打开：${result.path}`);
+  }
+
   async function openMeituanDownloadDirectory() {
     if (!window.desktop?.meituan) {
       return;
@@ -246,55 +331,102 @@ function App() {
     setWeixinSyncMessage(result.error ? `打开文件夹失败：${result.error}` : `已打开：${result.path}`);
   }
 
+  function clearImportRecords() {
+    localStorage.removeItem(importRecordsStorageKey);
+    setImportRecords([]);
+    setWeixinSyncMessage("已清空全部处理记录");
+  }
+
   return (
     <ConfigProvider
       locale={zhCN}
       componentSize="small"
       theme={{
         token: {
-          borderRadius: 6,
-          colorPrimary: "#2563eb",
+          borderRadius: 8,
+          colorBgContainer: "#ffffff",
+          colorBorder: "#dfe3ea",
+          colorPrimary: "#2455d6",
+          colorText: "#172033",
+          colorTextSecondary: "#667085",
+          controlHeight: 36,
           fontFamily: '"Geist Variable", "Microsoft YaHei", system-ui, sans-serif',
         },
       }}
     >
-      <main className="min-h-screen overflow-x-hidden bg-[#eef2f7] text-slate-900">
-      <div className="flex min-h-screen flex-col border-x border-slate-300/70 bg-[#f6f8fb]">
-        <section className="grid grid-cols-[repeat(auto-fit,minmax(176px,1fr))] gap-2.5 border-b border-slate-200 bg-[#f3f6fa] px-3 py-3 lg:grid-cols-6">
-          {platformItems.map((platform) => (
-            <PlatformCard
-              key={platform.id}
-              platform={platform}
-              assistantSyncing={platform.id === "wx" && weixinSyncRunning.assistant}
-              promoteSyncing={platform.id === "wx" && weixinSyncRunning.promote}
-              syncing={platform.id === "meituan" && meituanSyncRunning}
-              onConfigure={platform.id === "wx" ? () => setSettingsOpen(true) : undefined}
-              onOpenDirectory={
-                platform.id === "wx"
-                  ? openWeixinDownloadDirectory
-                  : platform.id === "meituan"
-                    ? openMeituanDownloadDirectory
-                    : undefined
-              }
-              onAssistantSync={
-                platform.id === "wx"
-                  ? () => startWeixinSync("assistant")
-                  : platform.id === "meituan"
-                    ? startMeituanSync
-                    : undefined
-              }
-              onPromoteSync={platform.id === "wx" ? () => startWeixinSync("promote") : undefined}
-            />
-          ))}
-        </section>
+      <main className="app-shell">
+        <div className="app-content">
+          <section aria-labelledby="platform-section-title">
+            <div className="section-heading">
+              <h2 id="platform-section-title">平台同步</h2>
+              <span className="section-note">选择平台启动处理任务</span>
+            </div>
+            <div className="platform-grid">
+              {platformItems.map((platform) => (
+                <PlatformCard
+                  key={platform.id}
+                  platform={platform}
+                  assistantSyncing={platform.id === "wx" && weixinSyncRunning.assistant}
+                  promoteSyncing={platform.id === "wx" && weixinSyncRunning.promote}
+                  syncing={
+                    (platform.id === "meituan" && meituanSyncRunning) ||
+                    (platform.id === "kuaishou" && kuaishouSyncRunning)
+                  }
+                  onConfigure={
+                    platform.id === "wx"
+                      ? () => setSettingsOpen(true)
+                      : platform.id === "kuaishou"
+                        ? () => setKuaishouSettingsOpen(true)
+                        : undefined
+                  }
+                  onOpenDirectory={
+                    platform.id === "wx"
+                      ? openWeixinDownloadDirectory
+                      : platform.id === "kuaishou"
+                        ? openKuaishouDownloadDirectory
+                      : platform.id === "meituan"
+                        ? openMeituanDownloadDirectory
+                        : undefined
+                  }
+                  onAssistantSync={
+                    platform.id === "wx"
+                      ? () => startWeixinSync("assistant")
+                      : platform.id === "kuaishou"
+                        ? startKuaishouSync
+                      : platform.id === "meituan"
+                        ? startMeituanSync
+                        : undefined
+                  }
+                  onPromoteSync={platform.id === "wx" ? () => startWeixinSync("promote") : undefined}
+                />
+              ))}
+            </div>
+          </section>
 
-        <section className="px-3 py-3">
-          <div className="flex h-9 items-center justify-between px-1">
-            <h2 className="text-[15px] font-semibold text-slate-950">最近处理记录</h2>
-            <span className="text-xs text-slate-500">共 {importRecords.length} 条记录</span>
-          </div>
-          <ImportTable records={importRecords} />
-        </section>
+          <section className="records-section" aria-labelledby="records-section-title">
+            <div className="section-heading section-heading--records">
+              <h2 id="records-section-title">最近处理记录</h2>
+              <div className="records-actions">
+                <span className="record-count">{importRecords.length} 条记录</span>
+                <Popconfirm
+                  cancelText="取消"
+                  description="此操作只清理本机保存的处理记录，不影响平台账号和同步配置。"
+                  okButtonProps={{ danger: true }}
+                  okText="确认清空"
+                  onConfirm={clearImportRecords}
+                  title="清空全部处理记录？"
+                >
+                  <Button danger disabled={importRecords.length === 0} icon={<DeleteOutlined />} type="text">
+                    清空记录
+                  </Button>
+                </Popconfirm>
+              </div>
+            </div>
+            <div className="records-table">
+              <ImportTable records={importRecords} />
+            </div>
+          </section>
+        </div>
 
         <Footer statusText={weixinSyncMessage} />
         <WeixinSettingsDrawer
@@ -303,7 +435,12 @@ function App() {
           onSave={saveWeixinSettings}
           settings={weixinSettings}
         />
-      </div>
+        <KuaishouSettingsDrawer
+          open={kuaishouSettingsOpen}
+          onOpenChange={setKuaishouSettingsOpen}
+          onSave={saveKuaishouSettings}
+          settings={kuaishouSettings}
+        />
       </main>
     </ConfigProvider>
   );
@@ -329,7 +466,8 @@ function PlatformCard({
   syncing?: boolean
 }) {
   const needsLogin = platform.status === "needs-login";
-  const actionLabel = needsLogin ? "修复登录" : "开始同步";
+  const canStart = Boolean(onAssistantSync);
+  const actionLabel = needsLogin ? "修复登录" : canStart ? "开始处理" : "暂未接入";
 
   if (platform.id === "wx") {
     return (
@@ -346,49 +484,46 @@ function PlatformCard({
   }
 
   return (
-    <article className="min-w-0 rounded-lg border border-slate-300/80 bg-white overflow-hidden shadow-[0_1px_1px_rgba(15,23,42,0.025)]">
-      <div className="flex min-h-[72px] items-start gap-3 px-3 py-3">
+    <article className="platform-card">
+      <div className="platform-card__body">
         <PlatformLogo platform={platform} />
-        <div className="min-w-0 flex-1 pt-0.5">
-          <div className="truncate text-[15px] font-semibold text-slate-950">{platform.name}</div>
-          <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-sm text-slate-500">
-            <span>{platform.accountCount} 个账号</span>
-            <span
-              className={cn(
-                "inline-flex items-center gap-1.5 whitespace-nowrap",
-                needsLogin ? "text-amber-600" : "text-slate-500",
-              )}
-            >
-              <span
-                className={cn(
-                  "size-1.5 rounded-full",
-                  needsLogin ? "bg-amber-500" : "bg-emerald-600",
-                )}
-              />
-              {needsLogin ? "需验证" : "正常"}
-            </span>
+        <div className="platform-card__content">
+          <div className="platform-card__title-row">
+            <h3>{platform.name}</h3>
+            {needsLogin ? <span className="status-label status-label--warning"><i />需验证</span> : null}
           </div>
+          <span className="platform-card__meta">{platform.accountCount} 个账号</span>
         </div>
-      </div>
-      <div className="flex items-center justify-end gap-3 border-t border-slate-100 bg-slate-50/70 px-2.5 py-2">
-        {onOpenDirectory ? (
-          <Button
-            onClick={onOpenDirectory}
-            className="px-0 text-xs"
-            type="link"
-          >
-            打开文件夹
-          </Button>
-        ) : null}
-        <Button
-          danger={needsLogin}
-          disabled={syncing}
-          loading={syncing}
-          onClick={onAssistantSync}
-          size="small"
-        >
-          {syncing ? "数据处理中" : actionLabel}
-        </Button>
+        <div className="platform-card__actions">
+          {onConfigure ? (
+            <Button
+              aria-label={`配置${platform.name}`}
+              icon={<SettingOutlined />}
+              onClick={onConfigure}
+              type="text"
+            />
+          ) : null}
+          {onOpenDirectory ? (
+            <Button
+              aria-label={`打开${platform.name}文件夹`}
+              icon={<FolderOpenOutlined />}
+              onClick={onOpenDirectory}
+              type="text"
+            />
+          ) : null}
+          {canStart ? (
+            <Button
+              danger={needsLogin}
+              disabled={syncing}
+              icon={<SyncOutlined />}
+              loading={syncing}
+              onClick={onAssistantSync}
+              type={needsLogin ? "default" : "primary"}
+            >
+              {syncing ? "处理中" : actionLabel}
+            </Button>
+          ) : null}
+        </div>
       </div>
     </article>
   );
@@ -412,53 +547,29 @@ function WeixinChannelsCard({
   promoteSyncing: boolean
 }) {
   return (
-    <article className="col-span-full min-w-0 overflow-hidden rounded-lg border border-slate-300/80 bg-white shadow-[0_1px_1px_rgba(15,23,42,0.025)] lg:flex lg:items-stretch lg:justify-between">
-      <div className="flex min-h-[72px] items-start gap-3 px-3 py-3 lg:min-w-[300px] lg:items-center lg:pr-6">
-        <PlatformLogo platform={platform} />
-        <div className="min-w-0 flex-1 pt-0.5">
-          <div className="flex items-center gap-3">
-            <div className="truncate text-[15px] font-semibold text-slate-950">{platform.name}</div>
-            <span className="inline-flex shrink-0 items-center gap-1.5 text-sm text-slate-500">
-              <span className="size-1.5 rounded-full bg-emerald-600" />
-              正常
-            </span>
-          </div>
-          <div className="mt-1 flex items-center gap-1 text-xs text-slate-600">
-            <span>需手动逐个登录</span>
-            <ProcessTooltip />
-          </div>
-          <div className="mt-1.5 flex items-center gap-3 text-xs">
-            <Button type="link" size="small" onClick={onConfigure} className="h-auto px-0 text-xs">
-              配置
-            </Button>
-            <Button type="link" size="small" onClick={onOpenDirectory} className="h-auto px-0 text-xs text-slate-600">
-              打开文件夹
-            </Button>
+    <article className="platform-card platform-card--featured">
+      <div className="featured-platform__summary">
+        <div className="featured-platform__identity">
+          <PlatformLogo platform={platform} />
+          <div className="platform-card__content">
+            <h3>{platform.name}</h3>
+            <div className="featured-platform__hint">
+              {platform.accountCount} 个账号 · 任务启动后逐个登录 <ProcessTooltip />
+            </div>
           </div>
         </div>
-      </div>
-      <div className="flex flex-col gap-2 border-t border-slate-100 bg-slate-50/70 p-2.5 sm:flex-row lg:min-w-[500px] lg:items-center lg:border-l lg:border-t-0 lg:px-3">
-        <Button
-          disabled={assistantSyncing}
-          loading={assistantSyncing}
-          onClick={onAssistantSync}
-          size="small"
-          type="primary"
-          className="h-8 flex-1 text-xs"
-          title="微信视频号-助手剧集数据处理"
-        >
-          {assistantSyncing ? "助手剧集数据处理中" : "助手 · 剧集数据处理"}
-        </Button>
-        <Button
-          disabled={promoteSyncing}
-          loading={promoteSyncing}
-          onClick={onPromoteSync}
-          size="small"
-          className="h-8 flex-1 text-xs"
-          title="微信视频号-加热平台数据明细处理"
-        >
-          {promoteSyncing ? "加热平台数据处理中" : "加热平台 · 数据明细处理"}
-        </Button>
+        <div className="featured-platform__tools">
+          <Button aria-label="配置微信视频号" icon={<SettingOutlined />} onClick={onConfigure} type="text" />
+          <Button aria-label="打开微信视频号文件夹" icon={<FolderOpenOutlined />} onClick={onOpenDirectory} type="text" />
+        </div>
+        <div className="featured-platform__tasks">
+          <Button icon={<SyncOutlined />} disabled={assistantSyncing} loading={assistantSyncing} onClick={onAssistantSync} type="primary">
+            {assistantSyncing ? "处理中" : "助手数据"}
+          </Button>
+          <Button icon={<SyncOutlined />} disabled={promoteSyncing} loading={promoteSyncing} onClick={onPromoteSync}>
+            {promoteSyncing ? "处理中" : "加热明细"}
+          </Button>
+        </div>
       </div>
     </article>
   );
@@ -472,7 +583,7 @@ function ProcessTooltip() {
     >
       <Button
         aria-label="查看微信视频号数据处理说明"
-        className="text-slate-500"
+        className="info-button"
         icon={<InfoCircleOutlined />}
         shape="circle"
         type="text"
@@ -557,15 +668,15 @@ function WeixinSettingsDrawer({
   return (
     <Drawer
       destroyOnHidden
-      height="88vh"
       open={open}
-      placement="bottom"
+      placement="right"
+      size="large"
       title={
-        <div>
-          <div className="text-base font-semibold">微信视频号处理配置</div>
-          <div className="mt-0.5 text-xs font-normal text-slate-500">
+        <div className="drawer-title">
+          <div>微信视频号处理配置</div>
+          <p>
             日期范围在每次任务启动时读取；留空下载位置则使用应用默认目录。
-          </div>
+          </p>
         </div>
       }
       onClose={() => onOpenChange(false)}
@@ -579,7 +690,7 @@ function WeixinSettingsDrawer({
         </div>
       }
     >
-      <div className="grid gap-6 px-5 py-5 lg:grid-cols-2">
+      <div className="settings-grid">
         <DatePresetFieldset
           customRange={draft.assistantCustomDateRange}
           label="助手 · 剧集数据"
@@ -625,17 +736,17 @@ function WeixinSettingsDrawer({
       </div>
 
       {configurationError ? (
-        <Alert className="mx-5 mb-5" message={configurationError} showIcon type="error" />
+        <Alert className="settings-alert" message={configurationError} showIcon type="error" />
       ) : null}
 
-      <div className="border-t border-slate-200 px-5 py-4">
-        <label className="text-sm font-medium text-slate-900">文件保存位置</label>
-        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+      <div className="directory-setting">
+        <label>文件保存位置</label>
+        <div className="directory-setting__controls">
           <Input
             readOnly
             value={draft.downloadDirectory ?? ""}
             placeholder="未设置，使用应用默认目录"
-            className="min-w-0 flex-1"
+            className="directory-setting__input"
           />
           <Button onClick={chooseDirectory}>选择文件夹</Button>
           {draft.downloadDirectory ? (
@@ -648,7 +759,145 @@ function WeixinSettingsDrawer({
           ) : null}
         </div>
         {directoryError ? (
-          <Alert className="mt-2" message={directoryError} showIcon type="error" />
+          <Alert className="directory-setting__error" message={directoryError} showIcon type="error" />
+        ) : null}
+      </div>
+    </Drawer>
+  );
+}
+
+function KuaishouSettingsDrawer({
+  onOpenChange,
+  onSave,
+  open,
+  settings,
+}: {
+  onOpenChange: (open: boolean) => void
+  onSave: (settings: KuaishouSettings) => Promise<void>
+  open: boolean
+  settings: KuaishouSettings
+}) {
+  const [draft, setDraft] = useState(settings);
+  const [configurationError, setConfigurationError] = useState<string>();
+  const [directoryError, setDirectoryError] = useState<string>();
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setDraft(settings);
+      setConfigurationError(undefined);
+      setDirectoryError(undefined);
+    }
+  }, [open, settings]);
+
+  async function chooseDirectory() {
+    if (!window.desktop?.kuaishou) {
+      setDirectoryError("桌面功能未加载，请重启应用后重试");
+      return;
+    }
+
+    setDirectoryError(undefined);
+    try {
+      const directory = await window.desktop.kuaishou.chooseDownloadDirectory();
+      if (directory) {
+        setDraft((current) => ({ ...current, downloadDirectory: directory }));
+      }
+    } catch (error) {
+      window.desktop.log.error("选择快手文件保存位置失败", {
+        error: getErrorMessage(error),
+      });
+      setDirectoryError(`无法选择文件夹：${getErrorMessage(error)}`);
+    }
+  }
+
+  async function save() {
+    const validationError = validateKuaishouSettings(draft);
+    if (validationError) {
+      setConfigurationError(validationError);
+      return;
+    }
+
+    setConfigurationError(undefined);
+    setSaving(true);
+    try {
+      await onSave(draft);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Drawer
+      destroyOnHidden
+      open={open}
+      placement="right"
+      size="large"
+      title={
+        <div className="drawer-title">
+          <div>快手数据处理配置</div>
+          <p>使用已登录的快手会话下载 IAA 短剧数据，并自动导入后台。</p>
+        </div>
+      }
+      onClose={() => onOpenChange(false)}
+      styles={{ body: { padding: 0 } }}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button onClick={() => onOpenChange(false)}>取消</Button>
+          <Button loading={saving} onClick={save} type="primary">
+            保存配置
+          </Button>
+        </div>
+      }
+    >
+      <div className="settings-grid settings-grid--single">
+        <DatePresetFieldset
+          customRange={draft.customDateRange}
+          label="IAA · 短剧数据"
+          name="kuaishou-date-preset"
+          onChange={(datePreset) => {
+            setConfigurationError(undefined);
+            setDraft((current) => ({
+              ...current,
+              customDateRange:
+                datePreset === "custom"
+                  ? current.customDateRange ?? createDefaultCustomDateRange()
+                  : current.customDateRange,
+              datePreset,
+            }));
+          }}
+          onCustomRangeChange={(customDateRange) => {
+            setConfigurationError(undefined);
+            setDraft((current) => ({ ...current, customDateRange }));
+          }}
+          value={draft.datePreset}
+        />
+      </div>
+
+      {configurationError ? (
+        <Alert className="settings-alert" message={configurationError} showIcon type="error" />
+      ) : null}
+
+      <div className="directory-setting">
+        <label>文件保存位置</label>
+        <div className="directory-setting__controls">
+          <Input
+            readOnly
+            value={draft.downloadDirectory ?? ""}
+            placeholder="未设置，使用应用默认目录"
+            className="directory-setting__input"
+          />
+          <Button onClick={chooseDirectory}>选择文件夹</Button>
+          {draft.downloadDirectory ? (
+            <Button
+              type="text"
+              onClick={() => setDraft((current) => ({ ...current, downloadDirectory: undefined }))}
+            >
+              恢复默认
+            </Button>
+          ) : null}
+        </div>
+        {directoryError ? (
+          <Alert className="directory-setting__error" message={directoryError} showIcon type="error" />
         ) : null}
       </div>
     </Drawer>
@@ -671,24 +920,24 @@ function DatePresetFieldset({
   value: WeixinChannelsDatePreset
 }) {
   return (
-    <fieldset>
-      <legend className="text-sm font-semibold text-slate-950">{label}</legend>
+    <fieldset className="preset-fieldset">
+      <legend>{label}</legend>
       <Radio.Group
-        className="mt-2 block divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200"
+        className="preset-options"
         name={name}
         value={value}
         onChange={(event) => onChange(event.target.value as WeixinChannelsDatePreset)}
       >
         {datePresetOptions.map((option) => (
           <div key={option.value}>
-            <Radio className="flex w-full items-start px-3 py-2.5 hover:bg-slate-50" value={option.value}>
-              <span className="ml-1 inline-block">
-                <span className="block text-sm font-medium text-slate-800">{option.label}</span>
-                <span className="block text-xs text-slate-500">{option.description}</span>
+            <Radio className="preset-option" value={option.value}>
+              <span className="preset-option__copy">
+                <span>{option.label}</span>
+                <small>{option.description}</small>
               </span>
             </Radio>
             {option.value === "custom" && value === "custom" && customRange ? (
-              <div className="border-t border-slate-100 bg-slate-50/70 px-3 py-3">
+              <div className="preset-custom-range">
                 <DatePicker.RangePicker
                   allowClear={false}
                   format="YYYY-MM-DD"
@@ -697,7 +946,7 @@ function DatePresetFieldset({
                     dayjs(customRange.startDate),
                     dayjs(customRange.endDate),
                   ]}
-                  className="w-full"
+                  className="preset-custom-range__picker"
                   onChange={(dates) => {
                     if (!dates?.[0] || !dates[1]) {
                       return;
@@ -719,13 +968,12 @@ function DatePresetFieldset({
 
 function PlatformLogo({ platform }: { platform: Platform }) {
   if (platform.logo) {
-    return <img src={platform.logo} alt="" className="size-9 shrink-0 rounded-md object-contain" />;
+    return <span className="platform-logo"><img src={platform.logo} alt="" /></span>;
   }
 
   return (
-    <span className="relative flex size-9 shrink-0 items-center justify-center rounded-md bg-white">
-      <span className="absolute inset-1 rounded-[10px] bg-gradient-to-br from-emerald-400 via-cyan-400 to-blue-500" />
-      <span className="relative ml-0.5 h-0 w-0 border-y-[10px] border-l-[15px] border-y-transparent border-l-white" />
+    <span className="platform-logo platform-logo--fallback">
+      <span />
     </span>
   );
 }
@@ -801,10 +1049,21 @@ function ImportTable({ records }: { records: ImportRecord[] }) {
 
   return (
     <Table
-      bordered
       columns={columns}
       dataSource={records}
-      locale={{ emptyText: "暂无导入记录" }}
+      locale={{
+        emptyText: (
+          <Empty
+            image={<DatabaseOutlined />}
+            description={
+              <span className="table-empty-copy">
+                <strong>还没有处理记录</strong>
+                <small>完成一次平台同步后，结果会显示在这里</small>
+              </span>
+            }
+          />
+        ),
+      }}
       pagination={false}
       rowKey={(record) => `${record.platform}-${record.account}-${record.startedAt}`}
       scroll={{ x: 996 }}
@@ -844,15 +1103,17 @@ function StatusBadge({ status }: { status: ImportStatus }) {
 
 function Footer({ statusText }: { statusText: string }) {
   return (
-    <footer className="mt-auto flex min-h-9 flex-wrap items-center justify-between gap-x-8 gap-y-2 border-t border-slate-300/80 bg-[#f8fafc] px-3 py-2 text-xs text-slate-500">
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
-        <span className="inline-flex items-center gap-2 text-slate-700">
-          <span className="size-2 rounded-full bg-emerald-600" />
-          {statusText}
-        </span>
-        <span>版本：v1.2.0</span>
+    <footer className="app-footer">
+      <div className="app-footer__inner">
+        <div className="app-footer__meta">
+          <span className="app-footer__status">
+            <i />
+            {statusText}
+          </span>
+          <span>版本：v1.2.0</span>
+        </div>
+        <span>数据更新时间：2025-05-20 10:23:50</span>
       </div>
-      <span>数据更新时间：2025-05-20 10:23:50</span>
     </footer>
   );
 }
@@ -894,6 +1155,64 @@ function createImportRecordFromEvent(event: WeixinChannelsSyncEvent): ImportReco
     total: counts.total ?? "-",
     uniqId: event.uniqId,
   };
+}
+
+function createKuaishouImportRecord(event: KuaishouSyncEvent): ImportRecord {
+  if (event.type === "account-failed") {
+    return {
+      account: event.accountName ?? "快手账号",
+      detail: event.failureReason ?? event.message,
+      failed: 1,
+      platform: "快手",
+      platformLogo: platformLogoUrl("kuaishou.svg"),
+      startedAt: formatDateTime(event.timestamp ? new Date(event.timestamp) : new Date()),
+      status: "failed",
+      success: 0,
+      taskName: event.taskName ?? "IAA 短剧数据处理",
+      taskType: event.taskType ?? "kuaishou-iaa-mini-series-data",
+      total: "-",
+      uniqId: event.uniqId,
+    };
+  }
+
+  const counts = extractImportCounts(event.result);
+  const errorDetail = extractImportErrorDetail(event.result);
+  const failedCount = counts.failed ?? 0;
+  return {
+    account: event.accountName ?? "快手账号",
+    detail: errorDetail,
+    failed: failedCount,
+    platform: "快手",
+    platformLogo: platformLogoUrl("kuaishou.svg"),
+    sourceId: event.sourceId,
+    startedAt: formatDateTime(event.timestamp ? new Date(event.timestamp) : new Date()),
+    status: failedCount > 0 ? "partial" : "success",
+    success: counts.success ?? "-",
+    taskName: event.taskName ?? "IAA 短剧数据处理",
+    taskType: event.taskType ?? "kuaishou-iaa-mini-series-data",
+    total: counts.total ?? "-",
+    uniqId: event.uniqId,
+  };
+}
+
+function extractImportErrorDetail(result: unknown): string | undefined {
+  const data = isRecord(result) && isRecord(result.data) ? result.data : result;
+  if (!isRecord(data) || !Array.isArray(data.errors) || data.errors.length === 0) {
+    return undefined;
+  }
+
+  return data.errors
+    .slice(0, 3)
+    .map((error) => {
+      if (!isRecord(error)) {
+        return String(error);
+      }
+      const row = typeof error.rowNumber === "number" ? `第 ${error.rowNumber} 行` : "未知行";
+      const column = typeof error.columnName === "string" ? ` ${error.columnName}` : "";
+      const message = typeof error.message === "string" ? error.message : "导入失败";
+      return `${row}${column}：${message}`;
+    })
+    .join("；");
 }
 
 function createMeituanImportRecord(event: MeituanSyncEvent): ImportRecord {
@@ -938,11 +1257,18 @@ function extractImportCounts(result: unknown): {
   total?: number
 } {
   const data = isRecord(result) && isRecord(result.data) ? result.data : result;
+  const receivedCount = findNumericValue(data, ["receivedCount"]);
+  const savedCount = findNumericValue(data, ["savedCount"]);
+  const explicitFailed = findNumericValue(data, ["failed", "fail", "failCount", "failureCount", "errorCount"]);
 
   return {
-    failed: findNumericValue(data, ["failed", "fail", "failCount", "failureCount", "errorCount"]),
-    success: findNumericValue(data, ["success", "successCount", "imported", "importedCount"]),
-    total: findNumericValue(data, ["total", "totalCount", "count", "rowCount"]),
+    failed:
+      explicitFailed ??
+      (receivedCount !== undefined && savedCount !== undefined
+        ? Math.max(0, receivedCount - savedCount)
+        : undefined),
+    success: findNumericValue(data, ["success", "successCount", "imported", "importedCount", "savedCount"]),
+    total: findNumericValue(data, ["total", "totalCount", "count", "rowCount", "receivedCount"]),
   };
 }
 
@@ -1015,6 +1341,25 @@ function validateWeixinSettings(settings: WeixinChannelsSettings): string | unde
     if (selection.range.endDate > today) {
       return `${selection.label}：结束日期不能晚于今天`;
     }
+  }
+
+  return undefined;
+}
+
+function validateKuaishouSettings(settings: KuaishouSettings): string | undefined {
+  if (settings.datePreset !== "custom") {
+    return undefined;
+  }
+
+  const range = settings.customDateRange;
+  if (!range?.startDate || !range.endDate) {
+    return "请选择完整的开始日期和结束日期";
+  }
+  if (range.endDate < range.startDate) {
+    return "结束日期不能早于开始日期";
+  }
+  if (range.endDate > formatDateInputValue(new Date())) {
+    return "结束日期不能晚于今天";
   }
 
   return undefined;

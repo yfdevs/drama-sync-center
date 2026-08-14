@@ -24,6 +24,23 @@ export function getDarenCenterClient(): DarenCenterClient {
       loadDarenCenterConfig({
         envFile: environmentFile(),
       }),
+      {
+        onAuthEvent: (event) => {
+          if (event.type === 'token-refresh') {
+            logger.warn('Daren Center token expired; refreshing authentication', {
+              status: event.status,
+            })
+            return
+          }
+
+          logger.info(
+            event.type === 'login-started'
+              ? 'Daren Center authentication started'
+              : 'Daren Center authentication succeeded',
+            event.status === undefined ? undefined : { status: event.status },
+          )
+        },
+      },
     )
   }
 

@@ -716,7 +716,7 @@ async function runWeixinPromoteSyncLoop(
         accountName,
         filename: savedFile.filename,
         filePath: savedFile.filePath,
-        message: "加热平台文件已下载，导入接口待接入",
+        message: `加热平台数据导入完成：${accountName}`,
         mode: "promote",
         taskName: promoteStatisticTaskName,
         taskType: promoteStatisticTaskType,
@@ -724,7 +724,7 @@ async function runWeixinPromoteSyncLoop(
         timestamp: importedAt,
         type: "imported",
         uniqId,
-        result: importResult,
+        result: importResult.body,
       });
 
       await signOutAccount(
@@ -1936,19 +1936,33 @@ async function importPromoteStatisticFile(
     accountName: string;
     uniqId: string;
   },
-): Promise<{
-  importPending: true;
-}> {
-  syncLogger.info("Weixin Channels promote import API is pending", {
+) {
+  const fileBuffer = await readFile(savedFile.filePath);
+  syncLogger.info("Importing Weixin Channels promote file into Daren Center", {
     accountName: options.accountName,
+    bytes: fileBuffer.byteLength,
     filePath: savedFile.filePath,
     filename: savedFile.filename,
     uniqId: options.uniqId,
   });
 
-  return {
-    importPending: true,
-  };
+  const result = await getDarenCenterClient().importDramaHeatingActions({
+    file: new Blob([new Uint8Array(fileBuffer)], {
+      type: contentTypeForFile(savedFile.filename),
+    }),
+    filename: savedFile.filename,
+  });
+
+  syncLogger.info("Weixin Channels promote import completed", {
+    accountName: options.accountName,
+    body: result.body,
+    filePath: savedFile.filePath,
+    status: result.status,
+    statusText: result.statusText,
+    uniqId: options.uniqId,
+  });
+
+  return result;
 }
 
 async function clearLoginState(page: Page): Promise<void> {

@@ -237,6 +237,157 @@ void test('uploads copyright data as multipart and retries it after a 401', asyn
   assert.equal(firstUploadBody.get('sourceId'), '46')
 })
 
+void test('uploads Kuaishou records with the dedicated file field and refreshes a 401 token', async () => {
+  const calls = []
+  let loginCount = 0
+  const client = new DarenCenterClient(
+    {
+      baseUrl: 'http://example.test',
+      password: 'password',
+      timeoutMs: 30_000,
+      username: 'client_demo',
+    },
+    {
+      fetch: async (input, init) => {
+        const url = new URL(
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url,
+        )
+        calls.push({ init, url })
+
+        if (url.pathname === '/api/b/auth/login') {
+          loginCount += 1
+          return jsonResponse({
+            clientType: 'B',
+            data: {
+              loginId: 'client_demo',
+              loginType: 'admin',
+              tokenName: 'Authorization',
+              tokenValue: `kuaishou-token-${loginCount}`,
+            },
+            message: '登录成功',
+            service: 'rights-management-admin',
+          })
+        }
+
+        if (loginCount === 1) {
+          return jsonResponse(
+            {
+              clientType: 'AUTH',
+              data: null,
+              message: 'token 无效',
+              service: 'gateway',
+            },
+            401,
+          )
+        }
+
+        return jsonResponse({
+          clientType: 'B',
+          data: {
+            errors: [],
+            failCount: 2,
+            successCount: 98,
+            totalCount: 100,
+          },
+          message: '导入完成',
+          service: 'rights-management-admin',
+        })
+      },
+    },
+  )
+
+  const result = await client.importKuaishouRecords({
+    file: new Blob(['kuaishou-workbook'], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }),
+    filename: '快手数据.xlsx',
+  })
+
+  assert.equal(result.body.data.totalCount, 100)
+  assert.equal(loginCount, 2)
+  assert.equal(calls[3].url.pathname, '/api/b/kuaishou-records/import')
+  assert.equal(new Headers(calls[3].init.headers).get('authorization'), 'kuaishou-token-2')
+  assert.ok(calls[3].init.body instanceof FormData)
+  assert.equal(calls[3].init.body.has('sourceId'), false)
+
+  const uploadedFile = calls[3].init.body.get('file')
+  assert.ok(uploadedFile instanceof Blob)
+  assert.equal(uploadedFile.name, '快手数据.xlsx')
+})
+
+void test('uploads drama heating actions as a CSV file', async () => {
+  const calls = []
+  const client = new DarenCenterClient(
+    {
+      baseUrl: 'http://example.test',
+      password: 'password',
+      timeoutMs: 30_000,
+      username: 'client_demo',
+    },
+    {
+      fetch: async (input, init) => {
+        const url = new URL(
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url,
+        )
+        calls.push({ init, url })
+
+        if (url.pathname === '/api/b/auth/login') {
+          return jsonResponse({
+            clientType: 'B',
+            data: {
+              loginId: 'client_demo',
+              loginType: 'admin',
+              tokenName: 'Authorization',
+              tokenValue: 'heating-token',
+            },
+            message: '登录成功',
+            service: 'rights-management-admin',
+          })
+        }
+
+        return jsonResponse({
+          clientType: 'B',
+          data: {
+            receivedCount: 67,
+            savedCount: 67,
+          },
+          message: '导入完成',
+          service: 'rights-management-admin',
+        })
+      },
+    },
+  )
+
+  const result = await client.importDramaHeatingActions({
+    file: new Blob(['account,date,amount\nexample,2026-08-12,1'], {
+      type: 'text/csv',
+    }),
+    filename: '数据明细.csv',
+  })
+
+  assert.deepEqual(result.body.data, {
+    receivedCount: 67,
+    savedCount: 67,
+  })
+  assert.equal(calls[1].url.pathname, '/api/b/drama-heating/actions/import')
+  assert.equal(new Headers(calls[1].init.headers).get('authorization'), 'heating-token')
+  assert.equal(new Headers(calls[1].init.headers).has('content-type'), false)
+  assert.ok(calls[1].init.body instanceof FormData)
+
+  const uploadedFile = calls[1].init.body.get('file')
+  assert.ok(uploadedFile instanceof Blob)
+  assert.equal(uploadedFile.name, '数据明细.csv')
+  assert.equal(uploadedFile.type, 'text/csv')
+})
+
 void test('finds a source ID by exact name across filtered pages', async () => {
   const requestedUrls = []
   const client = new DarenCenterClient(

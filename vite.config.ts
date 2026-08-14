@@ -47,7 +47,11 @@ export default defineConfig({
       },
       'app-package': {
         cache: false,
-        command: 'electron-builder',
+        // Electron 43's Windows executable is about 225 MB. electron-builder's
+        // ASAR-integrity step keeps several copies in ArrayBuffers while patching
+        // the PE resources, so the default Node heap can fail under vp's worker
+        // load with "Array buffer allocation failed".
+        command: 'node --max-old-space-size=8192 scripts/package-electron.mjs',
         dependsOn: [
           'app-bundle',
           'prepare-automation',

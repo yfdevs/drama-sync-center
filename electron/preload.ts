@@ -16,6 +16,25 @@ const desktopApi: DesktopApi = {
     info: log('info'),
     warn: log('warn'),
   },
+  kuaishou: {
+    chooseDownloadDirectory: () =>
+      ipcRenderer.invoke('kuaishou:choose-download-directory'),
+    getSettings: () => ipcRenderer.invoke('kuaishou:settings-get'),
+    onSyncEvent: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        callback(payload as Parameters<typeof callback>[0])
+      }
+      ipcRenderer.on('kuaishou:sync-event', listener)
+      return () => {
+        ipcRenderer.off('kuaishou:sync-event', listener)
+      }
+    },
+    openDownloadDirectory: () =>
+      ipcRenderer.invoke('kuaishou:open-download-directory'),
+    saveSettings: (settings) => ipcRenderer.invoke('kuaishou:settings-save', settings),
+    startSync: () => ipcRenderer.invoke('kuaishou:sync-start'),
+    stopSync: () => ipcRenderer.invoke('kuaishou:sync-stop'),
+  },
   meituan: {
     onSyncEvent: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {

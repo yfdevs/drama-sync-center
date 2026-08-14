@@ -12,6 +12,9 @@ catalogs:
     vite-plus:
       specifier: 0.2.6
       version: 0.2.6
+    zod:
+      specifier: latest
+      version: 4.4.3
 
 overrides:
   '@electron/get': 5.1.0
@@ -166,6 +169,9 @@ importers:
       '@drama-sync/platform-automation-core':
         specifier: workspace:*
         version: link:../platform-automation-core
+      playwright:
+        specifier: 'catalog:'
+        version: 1.62.1
     devDependencies:
       typescript:
         specifier: ^6.0.3
@@ -4280,7 +4286,7 @@ snapshots:
     dependencies:
       '@types/http-cache-semantics': 4.2.0
       '@types/keyv': 3.1.4
-      '@types/node': 26.1.2
+      '@types/node': 24.13.3
       '@types/responselike': 1.0.3
 
   '@types/chai@5.2.3':
@@ -4298,12 +4304,12 @@ snapshots:
 
   '@types/fs-extra@9.0.13':
     dependencies:
-      '@types/node': 26.1.2
+      '@types/node': 24.13.3
 
   '@types/glob@7.2.0':
     dependencies:
       '@types/minimatch': 6.0.0
-      '@types/node': 26.1.2
+      '@types/node': 24.13.3
     optional: true
 
   '@types/http-cache-semantics@4.2.0': {}
@@ -4320,7 +4326,7 @@ snapshots:
 
   '@types/keyv@3.1.4':
     dependencies:
-      '@types/node': 26.1.2
+      '@types/node': 24.13.3
 
   '@types/minimatch@6.0.0':
     dependencies:
@@ -4336,10 +4342,11 @@ snapshots:
   '@types/node@26.1.2':
     dependencies:
       undici-types: 8.3.0
+    optional: true
 
   '@types/plist@3.0.5':
     dependencies:
-      '@types/node': 26.1.2
+      '@types/node': 24.13.3
       xmlbuilder: 15.1.1
     optional: true
 
@@ -4356,7 +4363,7 @@ snapshots:
 
   '@types/responselike@1.0.3':
     dependencies:
-      '@types/node': 26.1.2
+      '@types/node': 24.13.3
 
   '@types/verror@1.10.11':
     optional: true
@@ -6410,7 +6417,8 @@ snapshots:
 
   undici-types@7.18.2: {}
 
-  undici-types@8.3.0: {}
+  undici-types@8.3.0:
+    optional: true
 
   undici@7.29.0:
     optional: true
