@@ -34,6 +34,7 @@ import {
   Progress,
   Radio,
   Select,
+  Switch,
   Table,
   Tooltip,
 } from "antd";
@@ -100,6 +101,7 @@ const platforms: Platform[] = [
 const importRecordsStorageKey = "drama-sync-center:import-records";
 const defaultWeixinSettings: WeixinChannelsSettings = {
   assistantDatePreset: "previous-day",
+  assistantUseTestImportSource: false,
   promoteDatePreset: "previous-day",
 };
 const defaultKuaishouSettings: KuaishouSettings = {
@@ -399,6 +401,9 @@ function App() {
                   key={platform.id}
                   platform={platform}
                   assistantSyncing={platform.id === "wx" && weixinSyncRunning.assistant}
+                  assistantUseTestImportSource={
+                    platform.id === "wx" && weixinSettings.assistantUseTestImportSource
+                  }
                   promoteSyncing={platform.id === "wx" && weixinSyncRunning.promote}
                   syncing={
                     (platform.id === "meituan" && meituanSyncRunning) ||
@@ -491,6 +496,7 @@ function App() {
 
 function PlatformCard({
   assistantSyncing = false,
+  assistantUseTestImportSource = false,
   onConfigure,
   onAssistantSync,
   onOpenDirectory,
@@ -500,6 +506,7 @@ function PlatformCard({
   syncing = false,
 }: {
   assistantSyncing?: boolean
+  assistantUseTestImportSource?: boolean
   onConfigure?: () => void
   onAssistantSync?: () => void
   onOpenDirectory?: () => void
@@ -516,6 +523,7 @@ function PlatformCard({
     return (
       <WeixinChannelsCard
         assistantSyncing={assistantSyncing}
+        assistantUseTestImportSource={assistantUseTestImportSource}
         onConfigure={onConfigure}
         onAssistantSync={onAssistantSync}
         onOpenDirectory={onOpenDirectory}
@@ -574,6 +582,7 @@ function PlatformCard({
 
 function WeixinChannelsCard({
   assistantSyncing,
+  assistantUseTestImportSource,
   onConfigure,
   onAssistantSync,
   onOpenDirectory,
@@ -582,6 +591,7 @@ function WeixinChannelsCard({
   promoteSyncing,
 }: {
   assistantSyncing: boolean
+  assistantUseTestImportSource: boolean
   onConfigure?: () => void
   onAssistantSync?: () => void
   onOpenDirectory?: () => void
@@ -599,6 +609,11 @@ function WeixinChannelsCard({
             <div className="featured-platform__hint">
               {platform.accountCount} 个账号 · 任务启动后逐个登录 <ProcessTooltip />
             </div>
+            {assistantUseTestImportSource ? (
+              <div className="featured-platform__source-warning" role="status">
+                助手导入统一使用“测试导入数据的来源”
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="featured-platform__tools">
@@ -775,6 +790,22 @@ function WeixinSettingsDrawer({
             setDraft((current) => ({ ...current, promoteCustomDateRange }));
           }}
           value={draft.promoteDatePreset}
+        />
+      </div>
+
+      <div className="import-source-setting">
+        <div className="import-source-setting__copy">
+          <label htmlFor="weixin-test-import-source">助手导入使用测试数据来源</label>
+          <p>
+            开启后，所有登录账号下载的助手数据都会导入到“测试导入数据的来源”，不再按登录账号名称匹配数据来源。加热明细不受影响。
+          </p>
+        </div>
+        <Switch
+          checked={draft.assistantUseTestImportSource}
+          id="weixin-test-import-source"
+          onChange={(assistantUseTestImportSource) =>
+            setDraft((current) => ({ ...current, assistantUseTestImportSource }))
+          }
         />
       </div>
 

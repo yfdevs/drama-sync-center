@@ -289,6 +289,18 @@ textarea {
   font-size: 12px;
 }
 
+.featured-platform__source-warning {
+  width: fit-content;
+  margin-top: 6px;
+  border-radius: 6px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 18px;
+}
+
 .info-button.ant-btn {
   width: 24px;
   min-width: 24px;
@@ -564,6 +576,41 @@ textarea {
   margin: 0 24px 20px;
 }
 
+.import-source-setting {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 24px 20px;
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  padding: 14px 16px;
+}
+
+.import-source-setting__copy {
+  min-width: 0;
+}
+
+.import-source-setting__copy label {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 20px;
+}
+
+.import-source-setting__copy p {
+  max-width: 68ch;
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.import-source-setting .ant-switch {
+  flex: none;
+  margin-top: 1px;
+}
+
 .preset-fieldset {
   min-width: 0;
   margin: 0;
@@ -739,6 +786,11 @@ textarea {
 
   .directory-setting {
     padding: 20px 16px;
+  }
+
+  .import-source-setting {
+    margin-right: 16px;
+    margin-left: 16px;
   }
 
   .directory-setting__controls {

@@ -53,6 +53,7 @@ export interface KuaishouSettings {
 export interface WeixinChannelsSettings {
   assistantCustomDateRange?: WeixinChannelsCustomDateRange
   assistantDatePreset: WeixinChannelsDatePreset
+  assistantUseTestImportSource: boolean
   downloadDirectory?: string
   promoteCustomDateRange?: WeixinChannelsCustomDateRange
   promoteDatePreset: WeixinChannelsDatePreset

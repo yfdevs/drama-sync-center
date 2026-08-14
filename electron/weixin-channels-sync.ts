@@ -63,12 +63,14 @@ const statisticDateApplyMaxAttempts = 3;
 const statisticAuthPollIntervalMs = 500;
 const statisticResponseTimeoutMs = 60_000;
 const settingsStoreKey = "weixin-channels-settings";
+const testImportSourceName = "测试导入数据的来源";
 const syncLogger = logger.scope("weixin-channels-sync");
 
 const activeJobs = new Map<WeixinChannelsSyncMode, ActiveWeixinSyncJob>();
 
 const defaultSettings: WeixinChannelsSettings = {
   assistantDatePreset: "previous-day",
+  assistantUseTestImportSource: false,
   promoteDatePreset: "previous-day",
 };
 
@@ -117,6 +119,7 @@ function normalizeWeixinChannelsSettings(value: unknown): WeixinChannelsSettings
   return {
     assistantCustomDateRange: normalizeCustomDateRange(raw.assistantCustomDateRange),
     assistantDatePreset: normalizeDatePreset(raw.assistantDatePreset),
+    assistantUseTestImportSource: raw.assistantUseTestImportSource === true,
     downloadDirectory,
     promoteCustomDateRange: normalizeCustomDateRange(raw.promoteCustomDateRange),
     promoteDatePreset: normalizeDatePreset(raw.promoteDatePreset),
@@ -496,13 +499,13 @@ async function runWeixinChannelsSyncLoop(
       syncLogger.info("Importing Weixin Channels file into Daren Center", {
         accountName,
         filePath: savedFile.filePath,
-        sourceName: accountName,
+        sourceName: settings.assistantUseTestImportSource ? testImportSourceName : accountName,
         targetDate,
         uniqId,
       });
       const importedAt = new Date().toISOString();
       const importResult = await importDownloadedFile(savedFile, {
-        sourceName: accountName,
+        sourceName: settings.assistantUseTestImportSource ? testImportSourceName : accountName,
       });
 
       syncLogger.info("Weixin Channels import completed", {
