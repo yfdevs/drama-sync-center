@@ -11,7 +11,14 @@
     buildResources: "build/icons",
     output: "release/${version}",
   },
-  publish: [],
+  publish: [
+    {
+      provider: "github",
+      owner: "yfdevs",
+      repo: "drama-sync-center",
+      releaseType: "release",
+    },
+  ],
   files: ["dist", "dist-electron"],
   extraResources: [
     {
@@ -37,7 +44,10 @@
         arch: ["x64"],
       },
     ],
-    artifactName: "${productName}-Windows-${version}-Setup.${ext}",
+    // Keep the local filename identical to the safe name recorded in latest.yml.
+    // GitHub Release assets otherwise keep the Chinese filename while the updater
+    // requests an ASCII alias that does not exist.
+    artifactName: "drama-sync-center-setup-${version}.${ext}",
   },
   nsis: {
     oneClick: false,

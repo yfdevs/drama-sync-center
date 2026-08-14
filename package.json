@@ -1,7 +1,11 @@
 {
   "name": "drama-sync-center",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
+  "author": {
+    "name": "李雨锋",
+    "email": "2683030687@qq.com"
+  },
   "description": "多平台剧数据同步中心",
   "type": "module",
   "main": "dist-electron/main.js",
@@ -9,7 +13,8 @@
     "dev": "vp run app-dev",
     "build": "vp run app-package",
     "lint": "vp lint",
-    "preview": "vp preview"
+    "preview": "vp preview",
+    "release": "node scripts/create-release.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
@@ -29,6 +34,7 @@
     "dayjs": "^1.11.21",
     "electron-log": "^5.4.4",
     "electron-store": "^11.0.2",
+    "electron-updater": "^6.8.9",
     "electron-window-state": "^5.0.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

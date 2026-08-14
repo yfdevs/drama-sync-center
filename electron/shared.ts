@@ -1,4 +1,31 @@
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+export type UpdatePhase =
+  | 'available'
+  | 'checking'
+  | 'downloaded'
+  | 'downloading'
+  | 'error'
+  | 'idle'
+  | 'unsupported'
+  | 'up-to-date'
+
+export interface UpdateSource {
+  description: string
+  id: string
+  name: string
+  url: string
+}
+
+export interface UpdateState {
+  availableVersion?: string
+  currentVersion: string
+  message: string
+  phase: UpdatePhase
+  progress: number
+  selectedSourceId: string
+  sourceId?: string
+  sourceName?: string
+}
 export type WeixinChannelsSyncMode = 'assistant' | 'promote'
 export type WeixinChannelsDatePreset =
   | 'previous-day'
@@ -194,6 +221,15 @@ export interface DesktopApi {
     getForPlatform<T = unknown>(platformId: string, key: string): Promise<T | undefined>
     set(key: string, value: unknown): Promise<void>
     setForPlatform(platformId: string, key: string, value: unknown): Promise<void>
+  }
+  updater: {
+    check(): Promise<UpdateState>
+    download(): Promise<UpdateState>
+    getSources(): Promise<UpdateSource[]>
+    getState(): Promise<UpdateState>
+    install(): Promise<boolean>
+    onStatus(callback: (state: UpdateState) => void): () => void
+    setSource(sourceId: string): Promise<UpdateState>
   }
   weixinChannels: {
     chooseDownloadDirectory(): Promise<string | undefined>

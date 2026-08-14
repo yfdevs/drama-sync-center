@@ -3,6 +3,8 @@ import type {
   KuaishouSettings,
   KuaishouSyncEvent,
   MeituanSyncEvent,
+  UpdateSource,
+  UpdateState,
   WeixinChannelsCustomDateRange,
   WeixinChannelsDatePreset,
   WeixinChannelsSettings,
@@ -12,8 +14,10 @@ import type {
 import {
   DatabaseOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   FolderOpenOutlined,
   InfoCircleOutlined,
+  ReloadOutlined,
   SettingOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
@@ -27,7 +31,9 @@ import {
   Empty,
   Input,
   Popconfirm,
+  Progress,
   Radio,
+  Select,
   Table,
   Tooltip,
 } from "antd";
@@ -99,6 +105,13 @@ const defaultWeixinSettings: WeixinChannelsSettings = {
 const defaultKuaishouSettings: KuaishouSettings = {
   datePreset: "previous-day",
 };
+const defaultUpdateState: UpdateState = {
+  currentVersion: "1.0.0",
+  message: "正在读取版本信息",
+  phase: "idle",
+  progress: 0,
+  selectedSourceId: "github",
+};
 
 function App() {
   const [kuaishouSettings, setKuaishouSettings] = useState(defaultKuaishouSettings);
@@ -112,8 +125,27 @@ function App() {
   });
   const [weixinSettings, setWeixinSettings] = useState(defaultWeixinSettings);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [updateDrawerOpen, setUpdateDrawerOpen] = useState(false);
+  const [updateSources, setUpdateSources] = useState<UpdateSource[]>([]);
+  const [updateState, setUpdateState] = useState<UpdateState>(defaultUpdateState);
   const [weixinSyncMessage, setWeixinSyncMessage] = useState("服务运行中");
   const [importRecords, setImportRecords] = useState<ImportRecord[]>(() => loadImportRecords());
+
+  useEffect(() => {
+    if (!window.desktop?.updater) {
+      return undefined;
+    }
+
+    void Promise.all([
+      window.desktop.updater.getState(),
+      window.desktop.updater.getSources(),
+    ]).then(([nextState, sources]) => {
+      setUpdateState(nextState);
+      setUpdateSources(sources);
+    });
+
+    return window.desktop.updater.onStatus(setUpdateState);
+  }, []);
 
   useEffect(() => {
     if (!window.desktop?.platforms) {
@@ -428,7 +460,18 @@ function App() {
           </section>
         </div>
 
-        <Footer statusText={weixinSyncMessage} />
+        <Footer
+          onOpenUpdater={() => setUpdateDrawerOpen(true)}
+          statusText={weixinSyncMessage}
+          updateState={updateState}
+        />
+        <UpdateDrawer
+          open={updateDrawerOpen}
+          sources={updateSources}
+          state={updateState}
+          onOpenChange={setUpdateDrawerOpen}
+          onStateChange={setUpdateState}
+        />
         <WeixinSettingsDrawer
           open={settingsOpen}
           onOpenChange={setSettingsOpen}
@@ -1101,7 +1144,17 @@ function StatusBadge({ status }: { status: ImportStatus }) {
   return <Badge status={item.badgeStatus} text={item.label} />;
 }
 
-function Footer({ statusText }: { statusText: string }) {
+function Footer({
+  onOpenUpdater,
+  statusText,
+  updateState,
+}: {
+  onOpenUpdater: () => void
+  statusText: string
+  updateState: UpdateState
+}) {
+  const updateAvailable = updateState.phase === "available" || updateState.phase === "downloaded";
+
   return (
     <footer className="app-footer">
       <div className="app-footer__inner">
@@ -1110,11 +1163,145 @@ function Footer({ statusText }: { statusText: string }) {
             <i />
             {statusText}
           </span>
-          <span>版本：v1.2.0</span>
+          <Button
+            className={updateAvailable ? "version-button version-button--available" : "version-button"}
+            icon={updateAvailable ? <DownloadOutlined /> : undefined}
+            onClick={onOpenUpdater}
+            size="small"
+            type="text"
+          >
+            v{updateState.currentVersion}{updateAvailable ? " · 有新版本" : " · 检查更新"}
+          </Button>
         </div>
         <span>数据更新时间：2025-05-20 10:23:50</span>
       </div>
     </footer>
+  );
+}
+
+function UpdateDrawer({
+  onOpenChange,
+  onStateChange,
+  open,
+  sources,
+  state,
+}: {
+  onOpenChange: (open: boolean) => void
+  onStateChange: (state: UpdateState) => void
+  open: boolean
+  sources: UpdateSource[]
+  state: UpdateState
+}) {
+  const busy = state.phase === "checking" || state.phase === "downloading";
+  const selectedSource = sources.find((source) => source.id === state.selectedSourceId);
+
+  async function run(action: () => Promise<UpdateState>) {
+    try {
+      onStateChange(await action());
+    } catch (error) {
+      onStateChange({
+        ...state,
+        message: `更新操作失败：${getErrorMessage(error)}`,
+        phase: "error",
+        progress: 0,
+      });
+    }
+  }
+
+  async function changeSource(sourceId: string) {
+    if (!window.desktop?.updater) return;
+    await run(() => window.desktop.updater.setSource(sourceId));
+  }
+
+  function primaryAction() {
+    if (!window.desktop?.updater) return;
+
+    if (state.phase === "available") {
+      void run(() => window.desktop.updater.download());
+      return;
+    }
+    if (state.phase === "downloaded") {
+      void window.desktop.updater.install();
+      return;
+    }
+    void run(() => window.desktop.updater.check());
+  }
+
+  const actionLabel = state.phase === "available"
+    ? "下载新版本"
+    : state.phase === "downloaded"
+      ? "立即重启安装"
+      : state.phase === "checking"
+        ? "正在检查"
+        : state.phase === "downloading"
+          ? `正在下载 ${state.progress}%`
+          : "检查更新";
+
+  return (
+    <Drawer
+      destroyOnHidden
+      open={open}
+      placement="right"
+      title={
+        <div className="drawer-title">
+          <div>版本更新</div>
+          <p>检查 GitHub Releases，并在连接失败时自动尝试其他线路。</p>
+        </div>
+      }
+      onClose={() => onOpenChange(false)}
+      styles={{ body: { padding: 0 } }}
+    >
+      <div className="update-summary">
+        <div className="update-version-row">
+          <div>
+            <span className="update-field-label">当前版本</span>
+            <strong>v{state.currentVersion}</strong>
+          </div>
+          {state.availableVersion ? (
+            <div>
+              <span className="update-field-label">最新版本</span>
+              <strong>v{state.availableVersion}</strong>
+            </div>
+          ) : null}
+        </div>
+
+        <div className={`update-status update-status--${state.phase}`} role="status">
+          <span className="update-status__dot" />
+          <span>{state.message}</span>
+        </div>
+
+        {state.phase === "downloading" ? (
+          <Progress percent={state.progress} size="small" status="active" />
+        ) : null}
+
+        <Button
+          block
+          disabled={state.phase === "unsupported"}
+          icon={state.phase === "available" || state.phase === "downloaded"
+            ? <DownloadOutlined />
+            : <ReloadOutlined />}
+          loading={busy}
+          onClick={primaryAction}
+          size="large"
+          type="primary"
+        >
+          {actionLabel}
+        </Button>
+      </div>
+
+      <div className="update-source-setting">
+        <label htmlFor="update-source">下载线路</label>
+        <Select
+          id="update-source"
+          disabled={busy}
+          onChange={changeSource}
+          options={sources.map((source) => ({ label: source.name, value: source.id }))}
+          value={state.selectedSourceId}
+        />
+        <p>{selectedSource?.description ?? "选择优先使用的下载线路。"}</p>
+        <span>当前线路不可用时，应用会自动尝试其余线路。</span>
+      </div>
+    </Drawer>
   );
 }
 

@@ -118,6 +118,20 @@ pnpm exec vp run --verbose app-bundle
 
 任务会缓存 workspace 包编译、图标、类型检查以及 Vite/Electron bundle。Electron installer 和包含凭据的环境资源始终重新生成。
 
+## GitHub 发版与自动更新
+
+Windows 安装包通过 GitHub Releases 分发。应用启动 5 秒后检查更新，此后每 6 小时检查一次；依次尝试 GitHub 官方源、`gh-proxy.com` 和 `gh.3w.pm`，下载失败会自动切换下一个源。可在打包环境中用逗号分隔的 `DRAMA_SYNC_UPDATE_MIRRORS` 覆盖默认源列表。
+
+发版前先修改 `package.json` 的版本号并提交全部改动，然后运行：
+
+```bash
+pnpm release
+```
+
+仓库的 Actions Secret `PRODUCTION_ENV_BASE64` 需要保存 `.env.production` 的 Base64 内容。工作流只在构建时还原该文件，不会把它提交到 Git；但当前安装包仍然包含运行所需的生产账号配置，因此只能分发给可信用户。
+
+脚本会拒绝在工作区有未提交改动时运行，然后创建并推送 `v<版本号>` 标签。GitHub Actions 会在 Windows 环境构建安装包，并将安装程序、blockmap 和 `latest.yml` 发布到对应 Release。自动更新依赖这些文件，请勿单独删除。
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

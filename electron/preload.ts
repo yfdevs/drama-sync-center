@@ -86,6 +86,23 @@ const desktopApi: DesktopApi = {
     setForPlatform: (platformId, key, value) =>
       ipcRenderer.invoke('store:set-for-platform', platformId, key, value),
   },
+  updater: {
+    check: () => ipcRenderer.invoke('updater:check'),
+    download: () => ipcRenderer.invoke('updater:download'),
+    getSources: () => ipcRenderer.invoke('updater:sources'),
+    getState: () => ipcRenderer.invoke('updater:state'),
+    install: () => ipcRenderer.invoke('updater:install'),
+    onStatus: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        callback(payload as Parameters<typeof callback>[0])
+      }
+      ipcRenderer.on('updater:status', listener)
+      return () => {
+        ipcRenderer.off('updater:status', listener)
+      }
+    },
+    setSource: (sourceId) => ipcRenderer.invoke('updater:source-set', sourceId),
+  },
 }
 
 contextBridge.exposeInMainWorld('desktop', desktopApi)

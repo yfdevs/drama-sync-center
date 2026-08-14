@@ -1,5 +1,13 @@
 import { ipcMain } from 'electron'
 import type { LogLevel, WeixinChannelsSyncMode } from './shared'
+import {
+  checkForUpdates,
+  downloadUpdate,
+  getUpdateSources,
+  getUpdateState,
+  installDownloadedUpdate,
+  setUpdateSource,
+} from './auto-updater'
 import { getDarenCenterCurrentUser, loginToDarenCenter } from './daren-center'
 import { logger } from './logger'
 import {
@@ -56,6 +64,12 @@ const IPC_CHANNELS = {
   storeGetForPlatform: 'store:get-for-platform',
   storeSet: 'store:set',
   storeSetForPlatform: 'store:set-for-platform',
+  updaterCheck: 'updater:check',
+  updaterDownload: 'updater:download',
+  updaterInstall: 'updater:install',
+  updaterSources: 'updater:sources',
+  updaterSourceSet: 'updater:source-set',
+  updaterState: 'updater:state',
 } as const
 
 function writeRendererLog(level: LogLevel, message: string, details?: unknown): void {
@@ -71,6 +85,14 @@ function writeRendererLog(level: LogLevel, message: string, details?: unknown): 
 export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.darenCenterLogin, () => loginToDarenCenter())
   ipcMain.handle(IPC_CHANNELS.darenCenterMe, () => getDarenCenterCurrentUser())
+  ipcMain.handle(IPC_CHANNELS.updaterCheck, () => checkForUpdates())
+  ipcMain.handle(IPC_CHANNELS.updaterDownload, () => downloadUpdate())
+  ipcMain.handle(IPC_CHANNELS.updaterInstall, () => installDownloadedUpdate())
+  ipcMain.handle(IPC_CHANNELS.updaterSources, () => getUpdateSources())
+  ipcMain.handle(IPC_CHANNELS.updaterSourceSet, (_event, sourceId: string) =>
+    setUpdateSource(sourceId),
+  )
+  ipcMain.handle(IPC_CHANNELS.updaterState, () => getUpdateState())
   ipcMain.handle(IPC_CHANNELS.kuaishouSyncStart, (event) =>
     startKuaishouSync({
       sendEvent: (payload) => event.sender.send(IPC_CHANNELS.kuaishouSyncEvent, payload),

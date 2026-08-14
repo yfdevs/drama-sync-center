@@ -1,0 +1,73 @@
+name: Release Windows app
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Verify tag matches package version
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ($env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Tag $env:GITHUB_REF_NAME does not match package version v$version"
+          }
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore production environment
+        shell: pwsh
+        env:
+          PRODUCTION_ENV_BASE64: ${{ secrets.PRODUCTION_ENV_BASE64 }}
+        run: |
+          if (-not $env:PRODUCTION_ENV_BASE64) {
+            throw "Repository secret PRODUCTION_ENV_BASE64 is not configured"
+          }
+          $bytes = [Convert]::FromBase64String($env:PRODUCTION_ENV_BASE64)
+          [IO.File]::WriteAllBytes((Join-Path $PWD '.env.production'), $bytes)
+
+      - name: Build Windows installer
+        run: pnpm build
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          $releaseDir = Join-Path "release" $version
+          $assets = Get-ChildItem -LiteralPath $releaseDir -File | Where-Object {
+            $_.Name -eq 'latest.yml' -or
+            $_.Name -like '*setup-*.exe' -or
+            $_.Name -like '*setup-*.exe.blockmap'
+          } | ForEach-Object FullName
+
+          if (-not $assets -or -not ($assets | Where-Object { $_ -like '*latest.yml' })) {
+            throw "Release assets or latest.yml were not generated"
+          }
+
+          gh release create $env:GITHUB_REF_NAME $assets --generate-notes --verify-tag --title $env:GITHUB_REF_NAME

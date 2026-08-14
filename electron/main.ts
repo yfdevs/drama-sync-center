@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import windowStateKeeper from 'electron-window-state'
+import { startAutoUpdater } from './auto-updater'
 import { registerIpcHandlers } from './ipc'
 import { logger } from './logger'
 
@@ -93,4 +94,5 @@ void app.whenReady().then(() => {
   })
   logger.info('Log file', logger.transports.file.getFile().path)
   createWindow()
+  startAutoUpdater()
 })
