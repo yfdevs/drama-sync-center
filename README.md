@@ -130,6 +130,18 @@ pnpm release
 
 仓库的 Actions Secret `PRODUCTION_ENV_BASE64` 需要保存 `.env.production` 的 Base64 内容。工作流只在构建时还原该文件，不会把它提交到 Git；但当前安装包仍然包含运行所需的生产账号配置，因此只能分发给可信用户。
 
+更新 Secret 时运行：
+
+```bash
+pnpm secret:update
+```
+
+脚本会读取根目录的 `.env.production`，转换为 Base64 并复制到剪贴板。将其粘贴到 GitHub 的 `Settings > Secrets and variables > Actions` 中即可。如果已经安装并登录 GitHub CLI，也可以直接上传：
+
+```bash
+pnpm secret:update -- -Upload
+```
+
 脚本会拒绝在工作区有未提交改动时运行，然后创建并推送 `v<版本号>` 标签。GitHub Actions 会在 Windows 环境构建安装包，并将安装程序、blockmap 和 `latest.yml` 发布到对应 Release。自动更新依赖这些文件，请勿单独删除。
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.

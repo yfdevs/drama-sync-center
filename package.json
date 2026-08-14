@@ -14,7 +14,8 @@
     "build": "vp run app-package",
     "lint": "vp lint",
     "preview": "vp preview",
-    "release": "node scripts/create-release.mjs"
+    "release": "node scripts/create-release.mjs",
+    "secret:update": "pwsh -NoProfile -File scripts/update-production-env-secret.ps1"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
