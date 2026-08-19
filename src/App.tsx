@@ -63,6 +63,7 @@ type ImportRecord = {
   account: string;
   taskName: string;
   taskType: string;
+  dataPeriod?: string;
   total: number | string;
   success: number | string;
   failed: number | string;
@@ -1118,6 +1119,16 @@ function ImportTable({ records }: { records: ImportRecord[] }) {
       width: 100,
       render: (status: ImportStatus) => <StatusBadge status={status} />,
     },
+    {
+      dataIndex: "dataPeriod",
+      title: "数据日期",
+      width: 185,
+      render: (dataPeriod?: string) => (
+        <span className="whitespace-nowrap font-mono text-[12px] text-slate-700">
+          {formatDataPeriod(dataPeriod)}
+        </span>
+      ),
+    },
     { dataIndex: "startedAt", title: "开始时间", width: 145 },
   ];
 
@@ -1140,7 +1151,7 @@ function ImportTable({ records }: { records: ImportRecord[] }) {
       }}
       pagination={false}
       rowKey={(record) => `${record.platform}-${record.account}-${record.startedAt}`}
-      scroll={{ x: 996 }}
+      scroll={{ x: 1181 }}
       size="small"
     />
   );
@@ -1340,6 +1351,7 @@ function createImportRecordFromEvent(event: WeixinChannelsSyncEvent): ImportReco
   if (event.type === "account-failed") {
     return {
       account: event.accountName ?? "微信视频号账号",
+      dataPeriod: event.targetDate,
       detail: event.failureReason ?? event.message,
       failed: 1,
       platform: "微信视频号",
@@ -1360,6 +1372,7 @@ function createImportRecordFromEvent(event: WeixinChannelsSyncEvent): ImportReco
 
   return {
     account: event.accountName ?? "微信视频号账号",
+    dataPeriod: event.targetDate,
     detail: event.failureReason,
     failed: counts.failed ?? "-",
     platform: "微信视频号",
@@ -1379,6 +1392,7 @@ function createKuaishouImportRecord(event: KuaishouSyncEvent): ImportRecord {
   if (event.type === "account-failed") {
     return {
       account: event.accountName ?? "快手账号",
+      dataPeriod: event.targetDate,
       detail: event.failureReason ?? event.message,
       failed: 1,
       platform: "快手",
@@ -1398,6 +1412,7 @@ function createKuaishouImportRecord(event: KuaishouSyncEvent): ImportRecord {
   const failedCount = counts.failed ?? 0;
   return {
     account: event.accountName ?? "快手账号",
+    dataPeriod: event.targetDate,
     detail: errorDetail,
     failed: failedCount,
     platform: "快手",
@@ -1601,6 +1616,10 @@ function formatDateTime(date: Date): string {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
+function formatDataPeriod(dataPeriod?: string): string {
+  return dataPeriod?.replace(/\s*至\s*/g, " 至 ") ?? "—";
+}
+
 function loadImportRecords(): ImportRecord[] {
   try {
     const rawRecords = localStorage.getItem(importRecordsStorageKey);
@@ -1626,6 +1645,7 @@ function normalizeImportRecord(record: unknown): ImportRecord {
 
   return {
     account: typeof rawRecord.account === "string" ? rawRecord.account : "微信视频号账号",
+    dataPeriod: typeof rawRecord.dataPeriod === "string" ? rawRecord.dataPeriod : undefined,
     detail: typeof rawRecord.detail === "string" ? rawRecord.detail : undefined,
     failed: typeof rawRecord.failed === "number" || typeof rawRecord.failed === "string" ? rawRecord.failed : "-",
     platform: typeof rawRecord.platform === "string" ? rawRecord.platform : "微信视频号",
