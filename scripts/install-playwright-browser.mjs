@@ -46,12 +46,17 @@ async function findIncompleteChromiumInstallations() {
     }
 
     const installationPath = path.join(browsersPath, entry.name)
-    const executableName = process.platform === 'win32'
-      ? 'chrome.exe'
+    const executableNames = process.platform === 'win32'
+      ? ['chrome.exe']
       : process.platform === 'darwin'
-        ? 'Chromium'
-        : 'chrome'
-    const hasExecutable = await findFile(installationPath, executableName)
+        // Recent Playwright Chromium builds use Chrome for Testing on macOS.
+        // Keep the legacy Chromium name so existing cached installations also
+        // remain valid.
+        ? ['Google Chrome for Testing', 'Chromium']
+        : ['chrome']
+    const hasExecutable = (
+      await Promise.all(executableNames.map((name) => findFile(installationPath, name)))
+    ).some(Boolean)
     const hasIcuData = await findFile(installationPath, 'icudtl.dat')
 
     if (hasExecutable && hasIcuData) {
@@ -61,7 +66,7 @@ async function findIncompleteChromiumInstallations() {
     incomplete.push({
       path: installationPath,
       missing: [
-        !hasExecutable && executableName,
+        !hasExecutable && `Chromium executable (${executableNames.join(' or ')})`,
         !hasIcuData && 'icudtl.dat',
       ].filter(Boolean),
     })
