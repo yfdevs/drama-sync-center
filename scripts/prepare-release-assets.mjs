@@ -147,15 +147,22 @@ export async function prepareReleaseAssets(sourceDirectory, outputDirectory) {
   await writeFile(path.join(output, 'latest-mac.yml'), mergeMacUpdateInfo(macUpdateFiles))
   copiedNames.add('latest-mac.yml')
 
+  /** @type {Array<{ description: string, matches: (name: string) => boolean }>} */
   const requiredChecks = [
-    ['Windows installer', (name) => name.endsWith('.exe')],
-    ['Windows update metadata', (name) => name === 'latest.yml'],
-    ['Intel macOS DMG', (name) => name.endsWith('-x64.dmg')],
-    ['Apple Silicon macOS DMG', (name) => name.endsWith('-arm64.dmg')],
-    ['Intel macOS ZIP', (name) => name.endsWith('-x64.zip')],
-    ['Apple Silicon macOS ZIP', (name) => name.endsWith('-arm64.zip')],
+    { description: 'Windows installer', matches: (name) => name.endsWith('.exe') },
+    { description: 'Windows update metadata', matches: (name) => name === 'latest.yml' },
+    { description: 'Intel macOS DMG', matches: (name) => name.endsWith('-x64.dmg') },
+    {
+      description: 'Apple Silicon macOS DMG',
+      matches: (name) => name.endsWith('-arm64.dmg'),
+    },
+    { description: 'Intel macOS ZIP', matches: (name) => name.endsWith('-x64.zip') },
+    {
+      description: 'Apple Silicon macOS ZIP',
+      matches: (name) => name.endsWith('-arm64.zip'),
+    },
   ]
-  for (const [description, matches] of requiredChecks) {
+  for (const { description, matches } of requiredChecks) {
     if (![...copiedNames].some(matches)) throw new Error(`Missing ${description}`)
   }
 

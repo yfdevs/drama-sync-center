@@ -138,7 +138,7 @@ macOS 正式发版还需要在 `Settings > Secrets and variables > Actions` 配�
 - `APPLE_APP_SPECIFIC_PASSWORD`：Apple ID 专用密码
 - `APPLE_TEAM_ID`：Apple Developer Team ID
 
-GitHub Actions 分别在 `macos-15-intel` 和 `macos-15` runner 上构建，使随包 Playwright Chromium 与目标架构一致。正式构建会验证代码签名、Gatekeeper 和公证票据；任一环节失败都不会创建 Release。本地 Mac 未配置发布证书时仍可生成测试包，但不应对外分发。
+GitHub Actions 分别在 `macos-15-intel` 和 `macos-15` runner 上构建，使随包 Playwright Chromium 与目标架构一致。上述 5 个 Secret 全部配置时，构建会验证代码签名、Gatekeeper 和公证票据；任一环节失败都不会创建 Release。5 个 Secret 全部未配置时，Actions 会显示警告但仍生成未签名的测试包；只配置一部分时会直接失败。未签名包不应对外正式分发。
 
 更新 Secret 时运行：
 

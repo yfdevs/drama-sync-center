@@ -109,6 +109,7 @@ jobs:
           cache: pnpm
 
       - name: Verify macOS release environment
+        id: macos-release-environment
         run: node scripts/verify-macos-release-environment.mjs ${{ matrix.architecture }}
 
       - name: Install dependencies
@@ -123,6 +124,7 @@ jobs:
         run: pnpm build
 
       - name: Verify macOS signatures and notarization
+        if: steps.macos-release-environment.outputs.signed == 'true'
         shell: bash
         run: |
           app_path="$(find "release/${{ needs.verify-release.outputs.version }}" -type d -name '*.app' -print -quit)"

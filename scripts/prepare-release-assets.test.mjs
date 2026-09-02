@@ -21,7 +21,7 @@ releaseDate: '2026-09-02T00:00:00.000Z'
 `
 }
 
-test('prepares release assets and merges macOS architecture metadata', async (context) => {
+void test('prepares release assets and merges macOS architecture metadata', async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'drama-release-assets-'))
   context.after(() => rm(root, { force: true, recursive: true }))
 

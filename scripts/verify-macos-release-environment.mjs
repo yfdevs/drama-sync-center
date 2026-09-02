@@ -1,3 +1,5 @@
+import { appendFile } from 'node:fs/promises'
+
 const expectedArch = process.argv[2]
 
 if (!['arm64', 'x64'].includes(expectedArch)) {
@@ -21,8 +23,19 @@ const requiredVariables = [
 ]
 const missingVariables = requiredVariables.filter((name) => !process.env[name])
 
-if (missingVariables.length > 0) {
+if (missingVariables.length > 0 && missingVariables.length < requiredVariables.length) {
   throw new Error(`Missing macOS release secrets: ${missingVariables.join(', ')}`)
 }
 
-console.log(`macOS ${expectedArch} signing and notarization environment is configured`)
+const signed = missingVariables.length === 0
+if (signed) {
+  console.log(`macOS ${expectedArch} signing and notarization environment is configured`)
+} else {
+  console.log(
+    '::warning::Apple signing secrets are not configured; creating an unsigned macOS test release',
+  )
+}
+
+if (process.env.GITHUB_OUTPUT) {
+  await appendFile(process.env.GITHUB_OUTPUT, `signed=${signed}\n`)
+}
