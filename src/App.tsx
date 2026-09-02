@@ -103,6 +103,8 @@ const importRecordsStorageKey = "drama-sync-center:import-records";
 const defaultWeixinSettings: WeixinChannelsSettings = {
   assistantDatePreset: "previous-day",
   assistantUseTestImportSource: false,
+  promoteStandardAllowDuplicateProcessing: false,
+  promoteStandardDatePreset: "previous-day",
   promoteDatePreset: "previous-day",
 };
 const defaultKuaishouSettings: KuaishouSettings = {
@@ -125,6 +127,7 @@ function App() {
   const [weixinSyncRunning, setWeixinSyncRunning] = useState<Record<WeixinChannelsSyncMode, boolean>>({
     assistant: false,
     promote: false,
+    "promote-standard": false,
   });
   const [weixinSettings, setWeixinSettings] = useState(defaultWeixinSettings);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -276,7 +279,11 @@ function App() {
 
     setWeixinSyncRunning((running) => ({ ...running, [mode]: true }));
     setWeixinSyncMessage(
-      mode === "promote" ? "正在启动微信视频号加热平台处理任务" : "正在启动微信视频号助手处理任务",
+      mode === "promote-standard"
+        ? "正在启动微信视频号标准数据分析任务"
+        : mode === "promote"
+          ? "正在启动微信视频号加热明细任务"
+          : "正在启动微信视频号助手处理任务",
     );
     const result = await window.desktop.weixinChannels.startSync(mode);
 
@@ -406,6 +413,13 @@ function App() {
                     platform.id === "wx" && weixinSettings.assistantUseTestImportSource
                   }
                   promoteSyncing={platform.id === "wx" && weixinSyncRunning.promote}
+                  promoteStandardSyncing={
+                    platform.id === "wx" && weixinSyncRunning["promote-standard"]
+                  }
+                  promoteStandardAllowDuplicateProcessing={
+                    platform.id === "wx" &&
+                    weixinSettings.promoteStandardAllowDuplicateProcessing
+                  }
                   syncing={
                     (platform.id === "meituan" && meituanSyncRunning) ||
                     (platform.id === "kuaishou" && kuaishouSyncRunning)
@@ -436,6 +450,9 @@ function App() {
                         : undefined
                   }
                   onPromoteSync={platform.id === "wx" ? () => startWeixinSync("promote") : undefined}
+                  onPromoteStandardSync={
+                    platform.id === "wx" ? () => startWeixinSync("promote-standard") : undefined
+                  }
                 />
               ))}
             </div>
@@ -502,7 +519,10 @@ function PlatformCard({
   onAssistantSync,
   onOpenDirectory,
   onPromoteSync,
+  onPromoteStandardSync,
   platform,
+  promoteStandardAllowDuplicateProcessing = false,
+  promoteStandardSyncing = false,
   promoteSyncing = false,
   syncing = false,
 }: {
@@ -512,7 +532,10 @@ function PlatformCard({
   onAssistantSync?: () => void
   onOpenDirectory?: () => void
   onPromoteSync?: () => void
+  onPromoteStandardSync?: () => void
   platform: Platform
+  promoteStandardAllowDuplicateProcessing?: boolean
+  promoteStandardSyncing?: boolean
   promoteSyncing?: boolean
   syncing?: boolean
 }) {
@@ -529,7 +552,10 @@ function PlatformCard({
         onAssistantSync={onAssistantSync}
         onOpenDirectory={onOpenDirectory}
         onPromoteSync={onPromoteSync}
+        onPromoteStandardSync={onPromoteStandardSync}
         platform={platform}
+        promoteStandardAllowDuplicateProcessing={promoteStandardAllowDuplicateProcessing}
+        promoteStandardSyncing={promoteStandardSyncing}
         promoteSyncing={promoteSyncing}
       />
     );
@@ -588,7 +614,10 @@ function WeixinChannelsCard({
   onAssistantSync,
   onOpenDirectory,
   onPromoteSync,
+  onPromoteStandardSync,
   platform,
+  promoteStandardAllowDuplicateProcessing,
+  promoteStandardSyncing,
   promoteSyncing,
 }: {
   assistantSyncing: boolean
@@ -597,7 +626,10 @@ function WeixinChannelsCard({
   onAssistantSync?: () => void
   onOpenDirectory?: () => void
   onPromoteSync?: () => void
+  onPromoteStandardSync?: () => void
   platform: Platform
+  promoteStandardAllowDuplicateProcessing: boolean
+  promoteStandardSyncing: boolean
   promoteSyncing: boolean
 }) {
   return (
@@ -615,6 +647,11 @@ function WeixinChannelsCard({
                 助手导入统一使用“测试导入数据的来源”
               </div>
             ) : null}
+            {promoteStandardAllowDuplicateProcessing ? (
+              <div className="featured-platform__source-warning" role="status">
+                标准看板测试模式：允许重复处理同一账号
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="featured-platform__tools">
@@ -627,6 +664,14 @@ function WeixinChannelsCard({
           </Button>
           <Button icon={<SyncOutlined />} disabled={promoteSyncing} loading={promoteSyncing} onClick={onPromoteSync}>
             {promoteSyncing ? "处理中" : "加热明细"}
+          </Button>
+          <Button
+            disabled={promoteStandardSyncing}
+            icon={<SyncOutlined />}
+            loading={promoteStandardSyncing}
+            onClick={onPromoteStandardSync}
+          >
+            {promoteStandardSyncing ? "处理中" : "标准看板"}
           </Button>
         </div>
       </div>
@@ -792,13 +837,34 @@ function WeixinSettingsDrawer({
           }}
           value={draft.promoteDatePreset}
         />
+        <DatePresetFieldset
+          customRange={draft.promoteStandardCustomDateRange}
+          label="加热平台 · 标准看板"
+          name="promote-standard-date-preset"
+          onChange={(promoteStandardDatePreset) => {
+            setConfigurationError(undefined);
+            setDraft((current) => ({
+              ...current,
+              promoteStandardCustomDateRange:
+                promoteStandardDatePreset === "custom"
+                  ? current.promoteStandardCustomDateRange ?? createDefaultCustomDateRange()
+                  : current.promoteStandardCustomDateRange,
+              promoteStandardDatePreset,
+            }));
+          }}
+          onCustomRangeChange={(promoteStandardCustomDateRange) => {
+            setConfigurationError(undefined);
+            setDraft((current) => ({ ...current, promoteStandardCustomDateRange }));
+          }}
+          value={draft.promoteStandardDatePreset}
+        />
       </div>
 
       <div className="import-source-setting">
         <div className="import-source-setting__copy">
           <label htmlFor="weixin-test-import-source">助手导入使用测试数据来源</label>
           <p>
-            开启后，所有登录账号下载的助手数据都会导入到“测试导入数据的来源”，不再按登录账号名称匹配数据来源。加热明细不受影响。
+            开启后，所有登录账号下载的助手数据都会导入到“测试导入数据的来源”，不再按登录账号名称匹配数据来源。标准看板数据不受影响。
           </p>
         </div>
         <Switch
@@ -806,6 +872,27 @@ function WeixinSettingsDrawer({
           id="weixin-test-import-source"
           onChange={(assistantUseTestImportSource) =>
             setDraft((current) => ({ ...current, assistantUseTestImportSource }))
+          }
+        />
+      </div>
+
+      <div className="import-source-setting">
+        <div className="import-source-setting__copy">
+          <label htmlFor="weixin-promote-standard-allow-duplicate">
+            标准看板允许重复处理（仅测试）
+          </label>
+          <p>
+            开启后，同一次任务中可重复登录并处理同一个视频号。默认关闭，避免重复下载和后续重复导入。
+          </p>
+        </div>
+        <Switch
+          checked={draft.promoteStandardAllowDuplicateProcessing}
+          id="weixin-promote-standard-allow-duplicate"
+          onChange={(promoteStandardAllowDuplicateProcessing) =>
+            setDraft((current) => ({
+              ...current,
+              promoteStandardAllowDuplicateProcessing,
+            }))
           }
         />
       </div>
@@ -1348,6 +1435,19 @@ function UpdateDrawer({
 }
 
 function createImportRecordFromEvent(event: WeixinChannelsSyncEvent): ImportRecord {
+  const isPromoteEvent = event.mode === "promote";
+  const isPromoteStandardEvent = event.mode === "promote-standard";
+  const fallbackTaskName = isPromoteStandardEvent
+    ? "加热平台 · 标准看板数据处理"
+    : isPromoteEvent
+      ? "加热平台 · 数据明细处理"
+      : "助手 · 剧集数据处理";
+  const fallbackTaskType = isPromoteStandardEvent
+    ? "weixin-channels-promote-standard-analysis"
+    : isPromoteEvent
+      ? "weixin-channels-promote-statistic"
+      : "weixin-channels-playlet-statistic";
+
   if (event.type === "account-failed") {
     return {
       account: event.accountName ?? "微信视频号账号",
@@ -1359,8 +1459,8 @@ function createImportRecordFromEvent(event: WeixinChannelsSyncEvent): ImportReco
       startedAt: formatDateTime(event.timestamp ? new Date(event.timestamp) : new Date()),
       status: "failed",
       success: 0,
-      taskName: "助手 · 剧集数据处理",
-      taskType: event.taskType ?? "weixin-channels-playlet-statistic",
+      taskName: event.taskName ?? fallbackTaskName,
+      taskType: event.taskType ?? fallbackTaskType,
       total: "-",
       uniqId: event.uniqId,
     };
@@ -1381,8 +1481,8 @@ function createImportRecordFromEvent(event: WeixinChannelsSyncEvent): ImportReco
     startedAt: formatDateTime(event.timestamp ? new Date(event.timestamp) : new Date()),
     status: importPending ? "pending" : failed > 0 ? "partial" : "success",
     success: counts.success ?? "-",
-    taskName: event.taskName ?? "助手 · 剧集数据处理",
-    taskType: event.taskType ?? "weixin-channels-playlet-statistic",
+    taskName: event.taskName ?? fallbackTaskName,
+    taskType: event.taskType ?? fallbackTaskType,
     total: counts.total ?? "-",
     uniqId: event.uniqId,
   };
@@ -1557,6 +1657,11 @@ function validateWeixinSettings(settings: WeixinChannelsSettings): string | unde
       label: "加热平台 · 数据明细",
       preset: settings.promoteDatePreset,
       range: settings.promoteCustomDateRange,
+    },
+    {
+      label: "加热平台 · 标准看板",
+      preset: settings.promoteStandardDatePreset,
+      range: settings.promoteStandardCustomDateRange,
     },
   ];
   const today = formatDateInputValue(new Date());

@@ -31,6 +31,7 @@ export interface ImportDramaHeatingActionsOptions {
 }
 
 export interface ImportDramaHeatingActionsResult {
+  batchId?: string;
   receivedCount: number;
   savedCount: number;
 }
@@ -240,6 +241,7 @@ export class DarenCenterClient {
     return this.request<ImportDramaHeatingActionsResult, FormData>(
       "/api/b/drama-heating/actions/import",
       {
+        authenticated: false,
         body: formData,
         method: "POST",
       },

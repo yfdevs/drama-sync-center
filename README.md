@@ -42,6 +42,10 @@ pnpm --filter @drama-sync/daren-center-automation run login
 - `@drama-sync/platform-qq-short-drama`
 - `@drama-sync/platform-tiktok-drama`
 
+微信视频号卡片提供“助手数据”“加热明细”和“标准看板”三项处理任务。“标准看板”进入加热平台的“标准数据分析-账户标准看板”，默认读取昨天的数据，自动配置数据明细维度（订单/计划、按天、短剧、加热对象、视频、作者、出价方式、订单类型、创建人）和指标（消耗金额、短剧广告变现金额、短剧广告变现 ROI、播放数），等待 CSV 下载完成后存档，并复用加热明细的 `/api/b/drama-heating/actions/import` 接口完成导入。
+
+标准看板默认会阻止同一次任务重复处理相同视频号。测试时可在微信视频号配置中开启“标准看板允许重复处理（仅测试）”；开关开启期间平台卡片会显示测试模式提示，关闭后恢复正常去重保护。
+
 共享的 Playwright、Zod、环境校验和 persistent profile 管理由 `@drama-sync/platform-automation-core` 提供。每个平台可配置多个账号，账号 ID 使用逗号分隔，例如：
 
 ```dotenv

@@ -319,7 +319,7 @@ void test('uploads Kuaishou records with the dedicated file field and refreshes 
   assert.equal(uploadedFile.name, '快手数据.xlsx')
 })
 
-void test('uploads drama heating actions as a CSV file', async () => {
+void test('uploads drama heating actions as an anonymous CSV request', async () => {
   const calls = []
   const client = new DarenCenterClient(
     {
@@ -377,12 +377,13 @@ void test('uploads drama heating actions as a CSV file', async () => {
     receivedCount: 67,
     savedCount: 67,
   })
-  assert.equal(calls[1].url.pathname, '/api/b/drama-heating/actions/import')
-  assert.equal(new Headers(calls[1].init.headers).get('authorization'), 'heating-token')
-  assert.equal(new Headers(calls[1].init.headers).has('content-type'), false)
-  assert.ok(calls[1].init.body instanceof FormData)
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url.pathname, '/api/b/drama-heating/actions/import')
+  assert.equal(new Headers(calls[0].init.headers).has('authorization'), false)
+  assert.equal(new Headers(calls[0].init.headers).has('content-type'), false)
+  assert.ok(calls[0].init.body instanceof FormData)
 
-  const uploadedFile = calls[1].init.body.get('file')
+  const uploadedFile = calls[0].init.body.get('file')
   assert.ok(uploadedFile instanceof Blob)
   assert.equal(uploadedFile.name, '数据明细.csv')
   assert.equal(uploadedFile.type, 'text/csv')

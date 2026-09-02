@@ -47,18 +47,25 @@ const loginUrl = "https://channels.weixin.qq.com/login.html";
 const promoteLoginUrl = "https://channels.weixin.qq.com/login.html?from=promote";
 const promoteStatisticUrl =
   "https://channels.weixin.qq.com/promote/pages/platform/short-video/promote-statistic";
+const promoteDataAnalysisUrl =
+  "https://channels.weixin.qq.com/promote/pages/platform/data-analysis";
 const promoteUserPrepareUrl =
   "https://channels.weixin.qq.com/promote/api/web/transfer/MMFinderPromotionDspApisvr/getUserPrepare";
 const statisticUrl = "https://channels.weixin.qq.com/platform/playlet/statistic";
 const authDataUrl = "https://channels.weixin.qq.com/cgi-bin/mmfinderassistant-bin/auth/auth_data";
 const statisticListApiName = "get-finder-native-drama-statistics-list";
 const promoteOrderListApiName = "searchFeedPromotionOrderList";
+const promoteDataAnalysisQueryApiName = "MMFinderPromotionOrderApiSvr/queryIndicator";
 const statisticLoadingSelector = ".common-table-loading";
 const playletStatisticTaskName = "助手 · 剧集数据处理";
 const playletStatisticTaskType = "weixin-channels-playlet-statistic";
 const promoteStatisticTaskName = "加热平台 · 数据明细处理";
 const promoteStatisticTaskType = "weixin-channels-promote-statistic";
+const promoteDataAnalysisTaskName = "加热平台 · 标准看板数据处理";
+const promoteDataAnalysisTaskType = "weixin-channels-promote-standard-analysis";
 const downloadEventTimeoutMs = 120_000;
+const promoteDataAnalysisDateApplyMaxAttempts = 2;
+const promoteDataAnalysisResponseGraceMs = 10_000;
 const statisticDateApplyMaxAttempts = 3;
 const statisticAuthPollIntervalMs = 500;
 const statisticResponseTimeoutMs = 60_000;
@@ -66,11 +73,53 @@ const settingsStoreKey = "weixin-channels-settings";
 const testImportSourceName = "测试导入数据的来源";
 const syncLogger = logger.scope("weixin-channels-sync");
 
+const promoteDataAnalysisDimensionLabels = [
+  "订单/计划",
+  "按天",
+  "短剧",
+  "加热对象",
+  "视频",
+  "作者",
+  "出价方式",
+  "订单类型",
+  "创建人",
+] as const;
+
+const promoteDataAnalysisIndicatorLabels = [
+  "消耗金额",
+  "短剧广告变现金额",
+  "短剧广告变现ROI",
+  "播放数",
+] as const;
+
+const promoteDataAnalysisExcludedIndicatorLabels = ["平均千次展示费用"] as const;
+
+const promoteDataAnalysisDimensionTypes = [
+  20_003, // 订单/计划
+  10_003, // 按天
+  20_015, // 短剧
+  20_001, // 加热对象
+  20_007, // 视频
+  20_009, // 作者
+  30_002, // 出价方式
+  20_004, // 订单类型
+  30_003, // 创建人
+] as const;
+
+const promoteDataAnalysisIndicatorTypes = [
+  200_005, // 消耗金额
+  501_008, // 短剧广告变现金额
+  501_009, // 短剧广告变现ROI
+  201_004, // 播放数
+] as const;
+
 const activeJobs = new Map<WeixinChannelsSyncMode, ActiveWeixinSyncJob>();
 
 const defaultSettings: WeixinChannelsSettings = {
   assistantDatePreset: "previous-day",
   assistantUseTestImportSource: false,
+  promoteStandardAllowDuplicateProcessing: false,
+  promoteStandardDatePreset: "previous-day",
   promoteDatePreset: "previous-day",
 };
 
@@ -121,6 +170,10 @@ function normalizeWeixinChannelsSettings(value: unknown): WeixinChannelsSettings
     assistantDatePreset: normalizeDatePreset(raw.assistantDatePreset),
     assistantUseTestImportSource: raw.assistantUseTestImportSource === true,
     downloadDirectory,
+    promoteStandardAllowDuplicateProcessing:
+      raw.promoteStandardAllowDuplicateProcessing === true,
+    promoteStandardCustomDateRange: normalizeCustomDateRange(raw.promoteStandardCustomDateRange),
+    promoteStandardDatePreset: normalizeDatePreset(raw.promoteStandardDatePreset),
     promoteCustomDateRange: normalizeCustomDateRange(raw.promoteCustomDateRange),
     promoteDatePreset: normalizeDatePreset(raw.promoteDatePreset),
   };
@@ -229,7 +282,11 @@ export function startWeixinChannelsSync(
   }
 
   const abortController = new AbortController();
-  const runJob = mode === "promote" ? runWeixinPromoteSyncLoop : runWeixinChannelsSyncLoop;
+  const runJob = mode === "promote"
+    ? runWeixinPromoteSyncLoop
+    : mode === "promote-standard"
+      ? runWeixinPromoteDataAnalysisSyncLoop
+      : runWeixinChannelsSyncLoop;
   const promise = runJob(options, abortController.signal)
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
@@ -257,7 +314,11 @@ export function startWeixinChannelsSync(
 
   syncLogger.info("Weixin Channels sync job started", { mode });
   options.sendEvent({
-    message: mode === "promote" ? "加热平台数据处理任务已启动" : "助手剧集数据处理任务已启动",
+    message: mode === "promote-standard"
+      ? "加热平台标准数据分析任务已启动"
+      : mode === "promote"
+        ? "加热平台数据处理任务已启动"
+        : "助手剧集数据处理任务已启动",
     mode,
     type: "started",
   });
@@ -537,6 +598,233 @@ async function runWeixinChannelsSyncLoop(
     }
   } finally {
     syncLogger.info("Closing Weixin Channels browser context");
+    await context.close().catch(() => undefined);
+  }
+}
+
+async function runWeixinPromoteDataAnalysisSyncLoop(
+  options: StartWeixinChannelsSyncOptions,
+  signal: AbortSignal,
+): Promise<void> {
+  const processedUniqIds = new Set<string>();
+  const settings = getWeixinChannelsSettings();
+  const dateRange = resolveDateRange(
+    settings.promoteStandardDatePreset,
+    settings.promoteStandardCustomDateRange,
+  );
+  const environment = loadPlatformAutomationEnvironment();
+  const config = loadPlatformRuntimeConfig(weixinChannelsPlatform, "operator-1", environment);
+  const profileRoot = path.isAbsolute(config.profileRoot)
+    ? config.profileRoot
+    : path.resolve(app.getPath("userData"), config.profileRoot);
+  const profilePath = path.join(profileRoot, weixinChannelsPlatform.id, "promote-standard-operator-1");
+  const downloadDirectory = settings.downloadDirectory
+    ? resolveWeixinChannelsDownloadRoot(settings)
+    : path.join(resolveWeixinChannelsDownloadRoot(settings), "promote-standard");
+  const temporaryDownloadDirectory = path.join(downloadDirectory, ".playwright");
+
+  await mkdir(downloadDirectory, { recursive: true });
+  await mkdir(temporaryDownloadDirectory, { recursive: true });
+  syncLogger.info("Weixin Channels standard data analysis runtime prepared", {
+    downloadDirectory,
+    profilePath,
+    temporaryDownloadDirectory,
+  });
+
+  process.env.PLAYWRIGHT_BROWSERS_PATH = app.isPackaged
+    ? path.join(process.resourcesPath, "playwright-browsers")
+    : path.join(process.env.APP_ROOT, "build", "playwright-browsers");
+
+  const { chromium } = await import("playwright");
+  const context = await chromium.launchPersistentContext(profilePath, {
+    acceptDownloads: true,
+    downloadsPath: temporaryDownloadDirectory,
+    headless: false,
+  });
+  const page = context.pages()[0] ?? (await context.newPage());
+
+  signal.addEventListener(
+    "abort",
+    () => {
+      void context.close().catch(() => undefined);
+    },
+    { once: true },
+  );
+
+  try {
+    while (!signal.aborted) {
+      syncLogger.info("Preparing next Weixin Channels standard data analysis login");
+      await prepareNextLogin(page, promoteLoginUrl);
+      options.sendEvent({
+        message: "请在打开的微信视频号加热平台登录页扫码",
+        mode: "promote-standard",
+        taskName: promoteDataAnalysisTaskName,
+        taskType: promoteDataAnalysisTaskType,
+        type: "waiting-for-scan",
+      });
+
+      await waitForLoginPageCompleted(page, signal);
+      options.sendEvent({
+        message: "扫码完成，正在进入加热平台标准数据分析页",
+        mode: "promote-standard",
+        taskName: promoteDataAnalysisTaskName,
+        taskType: promoteDataAnalysisTaskType,
+        type: "logged-in",
+      });
+
+      syncLogger.info("Opening Weixin Channels standard data analysis page", {
+        promoteDataAnalysisUrl,
+      });
+      await page.goto(promoteDataAnalysisUrl, {
+        waitUntil: "domcontentloaded",
+      });
+      await waitForPromoteDataAnalysisPageReady(page);
+      const { accountName, uniqId } = await fetchPromoteAccountInfo(page);
+      const targetDate = dateRange.label;
+
+      const isDuplicateAccount = Boolean(uniqId && processedUniqIds.has(uniqId));
+      const allowDuplicateProcessing = getWeixinChannelsSettings()
+        .promoteStandardAllowDuplicateProcessing;
+      if (
+        !uniqId ||
+        (isDuplicateAccount && !allowDuplicateProcessing)
+      ) {
+        const failureReason = !uniqId
+          ? "未获取到视频号 uniqId，为避免重复处理已跳过"
+          : "本次任务已处理过该视频号，已跳过重复下载";
+        options.sendEvent({
+          accountName,
+          failureReason,
+          message: `处理失败：${accountName}（${failureReason}）`,
+          mode: "promote-standard",
+          taskName: promoteDataAnalysisTaskName,
+          taskType: promoteDataAnalysisTaskType,
+          targetDate,
+          timestamp: new Date().toISOString(),
+          type: "account-failed",
+          uniqId: uniqId || undefined,
+        });
+        await signOutAccount(
+          page,
+          options,
+          { accountName, uniqId: uniqId || undefined },
+          { mode: "promote-standard", taskName: promoteDataAnalysisTaskName, taskType: promoteDataAnalysisTaskType },
+        );
+        continue;
+      }
+
+      if (isDuplicateAccount) {
+        syncLogger.warn(
+          "Allowing duplicate Weixin Channels standard data analysis account in test mode",
+          {
+            accountName,
+            targetDate,
+            uniqId,
+          },
+        );
+      }
+
+      processedUniqIds.add(uniqId);
+      syncLogger.info("Registered Weixin Channels standard data analysis account in current job", {
+        accountName,
+        processedAccountCount: processedUniqIds.size,
+        uniqId,
+      });
+
+      try {
+        await setPromoteDataAnalysisDateRangeWithRetry(page, dateRange, signal);
+        await configurePromoteDataAnalysisDetail(page, dateRange);
+      } catch (error) {
+        if (signal.aborted) {
+          throw error;
+        }
+
+        syncLogger.warn("Weixin Channels standard data analysis preparation failed", {
+          accountName,
+          error: error instanceof Error ? error.message : String(error),
+          targetDate,
+          uniqId,
+        });
+        const failureReason = `标准看板数据准备失败：${error instanceof Error ? error.message : String(error)}`;
+        options.sendEvent({
+          accountName,
+          failureReason,
+          message: `处理失败：${accountName}（${failureReason}）`,
+          mode: "promote-standard",
+          taskName: promoteDataAnalysisTaskName,
+          taskType: promoteDataAnalysisTaskType,
+          targetDate,
+          timestamp: new Date().toISOString(),
+          type: "account-failed",
+          uniqId,
+        });
+        await signOutAccount(
+          page,
+          options,
+          { accountName, uniqId },
+          { mode: "promote-standard", taskName: promoteDataAnalysisTaskName, taskType: promoteDataAnalysisTaskType },
+        );
+        continue;
+      }
+
+      const download = await downloadPromoteDataAnalysisFile(page, targetDate, dateRange);
+      const savedFile = await saveDownloadedFile(download, {
+        accountName,
+        downloadDirectory,
+        filenamePrefix: "加热平台标准看板",
+        targetDate,
+        uniqId,
+      });
+      await assertPromoteDataAnalysisDownloadHasRows(savedFile.filePath);
+      syncLogger.info("Weixin Channels standard data analysis download saved", {
+        accountName,
+        bytes: savedFile.bytes,
+        filePath: savedFile.filePath,
+        filename: savedFile.filename,
+        targetDate,
+        uniqId,
+      });
+      options.sendEvent({
+        accountName,
+        filePath: savedFile.filePath,
+        message: `加热平台标准看板数据下载完成：${savedFile.filename}`,
+        mode: "promote-standard",
+        taskName: promoteDataAnalysisTaskName,
+        taskType: promoteDataAnalysisTaskType,
+        targetDate,
+        type: "downloaded",
+        uniqId,
+      });
+
+      const importedAt = new Date().toISOString();
+      const importResult = await importPromoteDataAnalysisFile(savedFile, {
+        accountName,
+        uniqId,
+      });
+      options.sendEvent({
+        accountName,
+        filename: savedFile.filename,
+        filePath: savedFile.filePath,
+        message: `加热平台标准看板数据导入完成：${accountName}`,
+        mode: "promote-standard",
+        taskName: promoteDataAnalysisTaskName,
+        taskType: promoteDataAnalysisTaskType,
+        targetDate,
+        timestamp: importedAt,
+        type: "imported",
+        uniqId,
+        result: importResult.body,
+      });
+
+      await signOutAccount(
+        page,
+        options,
+        { accountName, uniqId },
+        { mode: "promote-standard", taskName: promoteDataAnalysisTaskName, taskType: promoteDataAnalysisTaskType },
+      );
+    }
+  } finally {
+    syncLogger.info("Closing Weixin Channels standard data analysis browser context");
     await context.close().catch(() => undefined);
   }
 }
@@ -954,6 +1242,103 @@ function parseStatisticRequestBody(request: Request): Record<string, unknown> | 
   }
 }
 
+/**
+ * The promotion RPC client sends queryIndicator arguments as `{ req: ... }`
+ * and also appends a top-level baseReq. Keep the date matcher independent of
+ * that transport wrapper so a dashboard request can be recognized reliably.
+ */
+function findPromoteDataAnalysisDatePayload(
+  body: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const queue: Array<{ value: unknown; depth: number }> = [{ value: body, depth: 0 }];
+  const visited = new Set<object>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || !isRecord(current.value)) {
+      continue;
+    }
+
+    if (visited.has(current.value)) {
+      continue;
+    }
+    visited.add(current.value);
+
+    if ("deliveryStartTime" in current.value && "deliveryEndTime" in current.value) {
+      return current.value;
+    }
+
+    if (current.depth >= 4) {
+      continue;
+    }
+
+    for (const value of Object.values(current.value)) {
+      if (isRecord(value)) {
+        queue.push({ depth: current.depth + 1, value });
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function getPromoteDataAnalysisRequestPayload(
+  request: Request,
+): Record<string, unknown> | undefined {
+  const body = parseStatisticRequestBody(request);
+  return body ? findPromoteDataAnalysisDatePayload(body) : undefined;
+}
+
+function isPromoteDataAnalysisDownloadQuery(request: Request): boolean {
+  if (!isPromoteDataAnalysisIndicatorRequest(request)) {
+    return false;
+  }
+
+  const payload = getPromoteDataAnalysisRequestPayload(request);
+  const selectContext = isRecord(payload?.selectContext) ? payload.selectContext : undefined;
+  return Number(payload?.cardType) === 3 && Number(selectContext?.pageSize) === 50;
+}
+
+function isPromoteDataAnalysisTableQuery(request: Request): boolean {
+  if (!isPromoteDataAnalysisIndicatorRequest(request)) {
+    return false;
+  }
+
+  const payload = getPromoteDataAnalysisRequestPayload(request);
+  const selectContext = isRecord(payload?.selectContext) ? payload.selectContext : undefined;
+  return Number(payload?.cardType) === 3 && Number(selectContext?.pageSize) === 10;
+}
+
+function assertPromoteDataAnalysisRequestFields(request: Request): void {
+  const payload = getPromoteDataAnalysisRequestPayload(request);
+  const actualDimensions = Array.isArray(payload?.dimensions)
+    ? payload.dimensions.map(Number)
+    : [];
+  const actualIndicators = Array.isArray(payload?.indicators)
+    ? payload.indicators.map(Number)
+    : [];
+  const expectedDimensions = [...promoteDataAnalysisDimensionTypes];
+  const expectedIndicators = [...promoteDataAnalysisIndicatorTypes];
+  const matches = (actual: number[], expected: number[]) =>
+    actual.length === expected.length && expected.every((value) => actual.includes(value));
+
+  if (!matches(actualDimensions, expectedDimensions)) {
+    throw new Error(
+      `标准看板下载维度不正确：期望 ${expectedDimensions.join(",")}，实际 ${actualDimensions.join(",")}`,
+    );
+  }
+  if (!matches(actualIndicators, expectedIndicators)) {
+    throw new Error(
+      `标准看板下载指标不正确：期望 ${expectedIndicators.join(",")}，实际 ${actualIndicators.join(",")}`,
+    );
+  }
+
+  syncLogger.info("Verified Weixin Channels standard data analysis request fields", {
+    dimensions: actualDimensions,
+    indicators: actualIndicators,
+  });
+}
+
 async function assertStatisticResponseSucceeded(response: Response): Promise<void> {
   let body: unknown;
 
@@ -973,6 +1358,71 @@ async function assertStatisticResponseSucceeded(response: Response): Promise<voi
   if (errorCode !== undefined && errorCode !== 0) {
     throw new Error(`视频号剧集统计数据接口返回失败状态：${errorCode}`);
   }
+}
+
+function findPromoteDataAnalysisDetailRows(value: unknown): unknown[] | undefined {
+  const queue: Array<{ depth: number; value: unknown }> = [{ depth: 0, value }];
+  const visited = new Set<object>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || !isRecord(current.value) || visited.has(current.value)) {
+      continue;
+    }
+    visited.add(current.value);
+
+    if (Array.isArray(current.value.detailRows)) {
+      return current.value.detailRows;
+    }
+    if (current.depth >= 4) {
+      continue;
+    }
+
+    for (const child of Object.values(current.value)) {
+      if (isRecord(child)) {
+        queue.push({ depth: current.depth + 1, value: child });
+      }
+    }
+  }
+
+  return undefined;
+}
+
+async function assertPromoteDataAnalysisResponseHasRows(
+  response: Response,
+  targetDate: string,
+): Promise<void> {
+  const body: unknown = await response.json().catch(() => undefined);
+  const rows = findPromoteDataAnalysisDetailRows(body);
+
+  if (!rows) {
+    throw new Error("标准看板下载接口响应中未找到数据明细列表");
+  }
+  if (rows.length === 0) {
+    throw new Error(`标准看板下载接口在 ${targetDate} 返回 0 条数据，已阻止空文件入库`);
+  }
+
+  syncLogger.info("Verified Weixin Channels standard data analysis response rows", {
+    rowCount: rows.length,
+    targetDate,
+  });
+}
+
+async function assertPromoteDataAnalysisDownloadHasRows(filePath: string): Promise<void> {
+  if (path.extname(filePath).toLowerCase() !== ".csv") {
+    return;
+  }
+
+  const content = (await readFile(filePath, "utf8")).replace(/^\uFEFF/u, "").trimEnd();
+  const nonEmptyLines = content.split(/\r?\n/u).filter((line) => line.trim().length > 0);
+  if (nonEmptyLines.length <= 1) {
+    throw new Error(`标准看板下载文件只有表头、没有数据行：${path.basename(filePath)}`);
+  }
+
+  syncLogger.info("Verified Weixin Channels standard data analysis CSV rows", {
+    dataLineCount: nonEmptyLines.length - 1,
+    filePath,
+  });
 }
 
 function getStatisticResponseErrorCode(body: Record<string, unknown>): number | undefined {
@@ -1023,15 +1473,48 @@ function getPromoteStatisticLoading(page: Page): Locator {
     .filter({ has: page.locator("svg.loading.animate-spin") });
 }
 
-function getPromoteDownloadControl(page: Page): Locator {
+function getPromoteDataAnalysisLoading(page: Page): Locator {
   return page
-    .getByRole("button", { name: /导出|下载/ })
-    .or(page.getByText(/导出|下载/))
+    .locator("div.absolute.bottom-0.left-0.right-0.top-0")
+    .filter({
+      has: page.locator("svg.loading.animate-spin, .finder-ui-desktop-loading"),
+    })
+    .or(page.locator(statisticLoadingSelector))
     .first();
 }
 
-function isPromoteOrderListRequest(request: Request): boolean {
-  return request.method() === "POST" && request.url().includes(promoteOrderListApiName);
+function getPromoteDataAnalysisDetailCard(page: Page): Locator {
+  return page
+    .getByRole("heading", { name: "数据明细", exact: true })
+    .first()
+    .locator("xpath=../../../..");
+}
+
+function getPromoteDataAnalysisDownloadControl(page: Page): Locator {
+  return getPromoteDataAnalysisDetailCard(page)
+    .locator('a[title="下载"]:visible')
+    .first();
+}
+
+function getPromoteDataAnalysisEditControl(page: Page): Locator {
+  return getPromoteDataAnalysisDetailCard(page)
+    .locator('a[title="编辑"]')
+    .first();
+}
+
+function getPromoteDataAnalysisDetailDialog(page: Page): Locator {
+  // The dashboard mounts one hidden selector dialog per card. Select the
+  // visible, most recently opened dialog so a hidden dialog from another card
+  // cannot intercept the automation flow.
+  return page
+    .locator('[role="dialog"]:visible, .finder-ui-desktop-dialog:visible')
+    .filter({ hasText: "选择展示项" })
+    .last();
+}
+
+function isPromoteDataAnalysisIndicatorRequest(request: Request): boolean {
+  return request.method() === "POST" &&
+    request.url().toLowerCase().includes(promoteDataAnalysisQueryApiName.toLowerCase());
 }
 
 function getPromoteTimestampRange(range: ResolvedDateRange): {
@@ -1051,21 +1534,23 @@ function getPromoteTimestampRange(range: ResolvedDateRange): {
   };
 }
 
-function doesPromoteOrderListMatchDateRange(request: Request, range: ResolvedDateRange): boolean {
-  const body = parseStatisticRequestBody(request);
+function doesPromoteDataAnalysisRequestMatchDateRange(
+  request: Request,
+  range: ResolvedDateRange,
+): boolean {
+  const payload = getPromoteDataAnalysisRequestPayload(request);
   const expectedRange = getPromoteTimestampRange(range);
-
   return Boolean(
-    body &&
-      String(body.createTsMin) === expectedRange.startTs &&
-      String(body.createTsMax) === expectedRange.endTs &&
-      Number(body.page) === 1,
+    payload &&
+      String(payload.deliveryStartTime) === expectedRange.startTs &&
+      String(payload.deliveryEndTime) === expectedRange.endTs,
   );
 }
 
 async function setPromoteDateRangeDirectly(
   root: Locator,
   range: ResolvedDateRange,
+  eventName: "change" | "update:selected" = "change",
 ): Promise<void> {
   const result = await root.evaluate((element, value) => {
     type VueVNode = {
@@ -1082,6 +1567,7 @@ async function setPromoteDateRangeDirectly(
       type?: { __name?: string; name?: string };
       vnode?: { props?: Record<string, unknown> | null };
     };
+    type VueEventHandler = ((...args: unknown[]) => unknown) | Array<(...args: unknown[]) => unknown>;
     type ElementWithVue3 = Element & {
       __vueParentComponent?: VueComponentInstance;
     };
@@ -1103,6 +1589,21 @@ async function setPromoteDateRangeDirectly(
     const visitedVNodes = new Set<VueVNode>();
     const visitedNames: string[] = [];
     const discoveredVueKeys = new Set<string>();
+    const invokeVueEventHandler = (handler: unknown, ...args: unknown[]): boolean => {
+      if (typeof handler === "function") {
+        handler(...args);
+        return true;
+      }
+      if (Array.isArray(handler) && handler.every((item) => typeof item === "function")) {
+        for (const item of handler as VueEventHandler[]) {
+          if (typeof item === "function") {
+            item(...args);
+          }
+        }
+        return true;
+      }
+      return false;
+    };
     const collectVNodeComponents = (node: unknown) => {
       if (!node || typeof node !== "object" || visitedVNodes.has(node as VueVNode)) {
         return;
@@ -1163,16 +1664,40 @@ async function setPromoteDateRangeDirectly(
       if (visitedNames.length < 40) {
         visitedNames.push(componentName);
       }
-      if (/MpDateRangePicker/i.test(componentName)) {
-        if (component.emit) {
-          component.emit("change", timestamps);
-          return { componentName, method: "emit", visitedNames };
+      if (/DateRangePicker/i.test(componentName)) {
+        const vnodeProps = component.vnode?.props;
+        const eventHandler = value.eventName === "update:selected"
+          ? vnodeProps?.["onUpdate:selected"]
+          : vnodeProps?.onChange;
+        if (value.eventName === "update:selected" && eventHandler) {
+          const daySelectHandler = vnodeProps?.onDaySelect;
+          if (!daySelectHandler) {
+            collectVNodeComponents(component.subTree);
+            continue;
+          }
+
+          invokeVueEventHandler(vnodeProps?.onPickerShow);
+          const startSelected = invokeVueEventHandler(daySelectHandler, {
+            timestamp: startMilliseconds,
+          });
+          const endSelected = invokeVueEventHandler(daySelectHandler, {
+            timestamp: endMilliseconds,
+          });
+          const rangeUpdated = invokeVueEventHandler(eventHandler, timestamps);
+          if (startSelected && endSelected && rangeUpdated) {
+            return {
+              componentName,
+              method: "vnode.day-select+update:selected",
+              visitedNames,
+            };
+          }
+        } else if (invokeVueEventHandler(eventHandler, timestamps)) {
+          return { componentName, method: `vnode.${value.eventName}`, visitedNames };
         }
 
-        const onChange = component.vnode?.props?.onChange;
-        if (typeof onChange === "function") {
-          onChange(timestamps);
-          return { componentName, method: "vnode.onChange", visitedNames };
+        if (value.eventName !== "update:selected" && component.emit) {
+          component.emit(value.eventName, timestamps);
+          return { componentName, method: `emit:${value.eventName}`, visitedNames };
         }
       }
 
@@ -1184,9 +1709,77 @@ async function setPromoteDateRangeDirectly(
         ...discoveredVueKeys,
       ].join(", ")}; visited: ${visitedNames.join(", ")}`,
     );
-  }, range);
+  }, { ...range, eventName });
 
   syncLogger.info("Updated Weixin Channels promote Vue date range", result);
+}
+
+async function applyPromoteDataAnalysisFilterDateRange(
+  page: Page,
+  range: ResolvedDateRange,
+): Promise<void> {
+  const dateRange = page.locator(".data-analysis-header-date-range").first();
+  const startInput = dateRange.locator('input[placeholder="开始日期"]').first();
+  const endInput = dateRange.locator('input[placeholder="结束日期"]').first();
+  const filterPanel = page
+    .getByRole("heading", { name: "数据筛选", exact: true })
+    .first()
+    .locator("xpath=../..");
+  await filterPanel.waitFor({
+    state: "visible",
+    timeout: statisticResponseTimeoutMs,
+  });
+  await setPromoteDateRangeDirectly(dateRange, range, "update:selected");
+
+  // Vue applies the date header update on the next render tick. Wait until the
+  // visible inputs reflect that state before clicking the filter's real query
+  // action; clicking it too early submits the previous date range.
+  await page.waitForFunction(
+    ({ endDate, startDate }) => {
+      const root = document.querySelector(".data-analysis-header-date-range");
+      const start = root?.querySelector<HTMLInputElement>('input[placeholder="开始日期"]');
+      const end = root?.querySelector<HTMLInputElement>('input[placeholder="结束日期"]');
+      return start?.value === startDate && end?.value === endDate;
+    },
+    { endDate: range.endDate, startDate: range.startDate },
+    { timeout: promoteDataAnalysisResponseGraceMs },
+  );
+
+  const filterButton = filterPanel.getByRole("button", { name: "筛选", exact: true }).first();
+  await filterButton.waitFor({
+    state: "visible",
+    timeout: statisticResponseTimeoutMs,
+  });
+  await filterButton.click({ timeout: statisticResponseTimeoutMs });
+
+  syncLogger.info("Submitted Weixin Channels standard data analysis date filter", {
+    endDate: await endInput.inputValue(),
+    method: "date-picker-update+filter-button-click",
+    startDate: await startInput.inputValue(),
+  });
+}
+
+function getPromoteDownloadControl(page: Page): Locator {
+  return page
+    .getByRole("button", { name: /导出|下载/ })
+    .or(page.getByText(/导出|下载/))
+    .first();
+}
+
+function isPromoteOrderListRequest(request: Request): boolean {
+  return request.method() === "POST" && request.url().includes(promoteOrderListApiName);
+}
+
+function doesPromoteOrderListMatchDateRange(request: Request, range: ResolvedDateRange): boolean {
+  const body = parseStatisticRequestBody(request);
+  const expectedRange = getPromoteTimestampRange(range);
+
+  return Boolean(
+    body &&
+      String(body.createTsMin) === expectedRange.startTs &&
+      String(body.createTsMax) === expectedRange.endTs &&
+      Number(body.page) === 1,
+  );
 }
 
 async function waitForPromoteStatisticPageReady(page: Page): Promise<void> {
@@ -1209,6 +1802,10 @@ async function waitForPromoteStatisticPageReady(page: Page): Promise<void> {
   syncLogger.info("Weixin Channels promote date inputs are visible");
   await getPromoteStatisticLoading(page).waitFor({
     state: "detached",
+    timeout: statisticResponseTimeoutMs,
+  });
+  await getPromoteDownloadControl(page).waitFor({
+    state: "visible",
     timeout: statisticResponseTimeoutMs,
   });
   syncLogger.info("Weixin Channels promote statistic page is ready");
@@ -1301,6 +1898,411 @@ async function setPromoteStatisticDateRangeWithRetry(
         targetDate: range.label,
       });
       if (signal.aborted || attempt === statisticDateApplyMaxAttempts) {
+        break;
+      }
+      await wait(1_000, signal);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+async function waitForPromoteDataAnalysisPageReady(page: Page): Promise<void> {
+  syncLogger.info("Waiting for Weixin Channels standard data analysis page to finish loading");
+  await page.waitForLoadState("domcontentloaded", {
+    timeout: 30_000,
+  });
+
+  await page.getByRole("heading", { name: "标准数据分析", exact: true }).waitFor({
+    state: "visible",
+    timeout: 180_000,
+  });
+
+  const dateRange = page.locator(".data-analysis-header-date-range").first();
+  await Promise.all([
+    dateRange.locator('input[placeholder="开始日期"]').waitFor({
+      state: "visible",
+      timeout: 180_000,
+    }),
+    dateRange.locator('input[placeholder="结束日期"]').waitFor({
+      state: "visible",
+      timeout: 180_000,
+    }),
+  ]);
+  syncLogger.info("Weixin Channels standard data analysis date inputs are visible");
+  await getPromoteDataAnalysisDetailCard(page).waitFor({
+    state: "visible",
+    timeout: 180_000,
+  });
+  await getPromoteDataAnalysisLoading(page).waitFor({
+    state: "detached",
+    timeout: statisticResponseTimeoutMs,
+  });
+  await getPromoteDataAnalysisDownloadControl(page).waitFor({
+    state: "visible",
+    timeout: statisticResponseTimeoutMs,
+  });
+  syncLogger.info("Weixin Channels standard data analysis page is ready");
+}
+
+async function setPromoteDataAnalysisDateRange(page: Page, range: ResolvedDateRange): Promise<void> {
+  const root = page.locator(".data-analysis-header-date-range").first();
+  const startInput = root.locator('input[placeholder="开始日期"]').first();
+  const endInput = root.locator('input[placeholder="结束日期"]').first();
+  const loading = getPromoteDataAnalysisLoading(page);
+
+  await loading.waitFor({
+    state: "detached",
+    timeout: statisticResponseTimeoutMs,
+  });
+
+  const [currentStartDate, currentEndDate] = await Promise.all([
+    startInput.inputValue(),
+    endInput.inputValue(),
+  ]);
+  if (currentStartDate === range.startDate && currentEndDate === range.endDate) {
+    syncLogger.info("Weixin Channels standard data analysis date range is already selected", {
+      endDate: currentEndDate,
+      startDate: currentStartDate,
+    });
+  }
+
+  syncLogger.info("Setting Weixin Channels standard data analysis date range", {
+    currentEndDate,
+    currentStartDate,
+    endDate: range.endDate,
+    startDate: range.startDate,
+  });
+  const targetResponsePromise = page.waitForResponse(
+    (response) =>
+      isPromoteDataAnalysisIndicatorRequest(response.request()) &&
+      doesPromoteDataAnalysisRequestMatchDateRange(response.request(), range),
+    { timeout: statisticResponseTimeoutMs },
+  );
+  const [targetResponse] = await Promise.all([
+    targetResponsePromise,
+    applyPromoteDataAnalysisFilterDateRange(page, range),
+  ]);
+
+  if (!targetResponse.ok()) {
+    throw new Error(
+      `加热平台目标日期数据请求失败：HTTP ${targetResponse.status()} ${targetResponse.statusText()}`,
+    );
+  }
+  const responseFailure = await targetResponse.finished();
+  if (responseFailure) {
+    throw new Error(`加热平台目标日期数据响应接收失败：${responseFailure.message}`);
+  }
+  await assertStatisticResponseSucceeded(targetResponse);
+
+  const [actualStartDate, actualEndDate] = await Promise.all([
+    startInput.inputValue(),
+    endInput.inputValue(),
+  ]);
+  if (actualStartDate !== range.startDate || actualEndDate !== range.endDate) {
+    throw new Error(
+      `加热平台日期设置失败：期望 ${range.startDate} 至 ${range.endDate}，实际 ${actualStartDate || "空"} 至 ${actualEndDate || "空"}`,
+    );
+  }
+
+  await loading.waitFor({
+    state: "detached",
+    timeout: statisticResponseTimeoutMs,
+  });
+  await getPromoteDataAnalysisDownloadControl(page).waitFor({
+    state: "visible",
+    timeout: statisticResponseTimeoutMs,
+  });
+  syncLogger.info("Weixin Channels standard data analysis date range applied", {
+    endDate: actualEndDate,
+    startDate: actualStartDate,
+  });
+}
+
+function getPromoteDataAnalysisLabelPattern(label: string): RegExp {
+  const normalizedLabel = label.replace(/\s+/gu, "").split("");
+  const escapedLabel = normalizedLabel
+    .map((character) => character.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s*");
+  return new RegExp(escapedLabel, "u");
+}
+
+function getPromoteDataAnalysisExactLabelPattern(label: string): RegExp {
+  const normalizedLabel = label.replace(/\s+/gu, "").split("");
+  const escapedLabel = normalizedLabel
+    .map((character) => character.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s*");
+  return new RegExp(`^\\s*${escapedLabel}\\s*$`, "u");
+}
+
+function getPromoteDataAnalysisOptionRow(scope: Locator, label: string): Locator {
+  return scope
+    .locator("div.inline-flex.cursor-pointer")
+    // Dimension names overlap: “视频” also occurs inside
+    // “短视频加热直播间素材”. A fuzzy match selected the latter (dimension
+    // 20011) and made the requested short-drama dimension combination return
+    // no rows. Match the complete row label so “视频” resolves to 20007.
+    .filter({ hasText: getPromoteDataAnalysisExactLabelPattern(label) })
+    .last();
+}
+
+async function setPromoteDataAnalysisOption(
+  scope: Locator,
+  label: string,
+  selected: boolean,
+): Promise<void> {
+  const row = getPromoteDataAnalysisOptionRow(scope, label);
+  await row.waitFor({
+    state: "visible",
+    timeout: statisticResponseTimeoutMs,
+  }).catch(() => {
+    throw new Error(`标准看板字段配置中未找到“${label}”`);
+  });
+
+  const checkbox = row.locator('input[type="checkbox"]').first();
+  if (await checkbox.count()) {
+    const current = await checkbox.isChecked();
+    if (current !== selected) {
+      await row.click({ timeout: statisticResponseTimeoutMs });
+    }
+    return;
+  }
+
+  const roleCheckbox = row.getByRole("checkbox").first();
+  if (await roleCheckbox.count()) {
+    const ariaChecked = await roleCheckbox.getAttribute("aria-checked");
+    if (ariaChecked === "true" || ariaChecked === "false") {
+      if ((ariaChecked === "true") !== selected) {
+        await row.click({ timeout: statisticResponseTimeoutMs });
+      }
+      return;
+    }
+  }
+
+  const rowAriaChecked = await row.getAttribute("aria-checked");
+  if (rowAriaChecked === "true" || rowAriaChecked === "false") {
+    if ((rowAriaChecked === "true") !== selected) {
+      await row.click({ timeout: statisticResponseTimeoutMs });
+    }
+    return;
+  }
+
+  throw new Error(`标准看板字段配置中无法读取“${label}”的选中状态`);
+}
+
+async function setPromoteDataAnalysisIndicatorBySearch(
+  dialog: Locator,
+  label: string,
+  selected: boolean,
+): Promise<void> {
+  const selectedTag = dialog
+    .locator(".tag-list-tags")
+    .getByText(getPromoteDataAnalysisExactLabelPattern(label))
+    .last();
+  const isSelected = await selectedTag.isVisible().catch(() => false);
+  if (isSelected === selected) {
+    return;
+  }
+
+  const searchInput = dialog.locator('input[placeholder="搜索关键词"]:visible').last();
+  await searchInput.waitFor({
+    state: "visible",
+    timeout: statisticResponseTimeoutMs,
+  }).catch(() => {
+    throw new Error("标准看板指标配置中未找到指标搜索框");
+  });
+  // `fill()` updates the input value but does not trigger the wrapper's click
+  // handler. The platform only renders the result dropdown after that handler
+  // opens the search state, so explicitly click the input and its search icon.
+  await searchInput.click({ timeout: statisticResponseTimeoutMs });
+  await searchInput.fill(label);
+  const searchIcon = dialog.locator("i.weui-icon-outlined-search:visible").last();
+  if (await searchIcon.isVisible().catch(() => false)) {
+    await searchIcon.click({ timeout: statisticResponseTimeoutMs });
+  }
+
+  const searchDropdown = dialog.locator(".indicator-search-dropdown:visible").last();
+  await searchDropdown.waitFor({
+    state: "visible",
+    timeout: promoteDataAnalysisResponseGraceMs,
+  }).catch(() => {
+    throw new Error(`标准看板指标配置中搜索“${label}”后未显示结果`);
+  });
+
+  const matchingRows = searchDropdown
+    .locator("div.cursor-pointer")
+    .filter({ hasText: getPromoteDataAnalysisLabelPattern(label) });
+  const exactRowIndex = await matchingRows.evaluateAll((rows, targetLabel) => {
+    const normalizedTarget = targetLabel.replace(/\s+/gu, "");
+    return rows.findIndex((row) => {
+      const pathParts = (row.textContent ?? "")
+        .split("/")
+        .map((part) => part.replace(/\s+/gu, ""))
+        .filter(Boolean);
+      return pathParts[pathParts.length - 1] === normalizedTarget;
+    });
+  }, label);
+  const resultRow = matchingRows.nth(exactRowIndex >= 0 ? exactRowIndex : 0);
+  await resultRow.waitFor({
+    state: "visible",
+    timeout: promoteDataAnalysisResponseGraceMs,
+  }).catch(() => {
+    throw new Error(`标准看板指标配置中未找到“${label}”`);
+  });
+
+  const matchedPath = (await resultRow.innerText()).replace(/\s+/gu, " ").trim();
+  await resultRow.click({ timeout: statisticResponseTimeoutMs });
+  await selectedTag.waitFor({
+    state: selected ? "visible" : "hidden",
+    timeout: promoteDataAnalysisResponseGraceMs,
+  }).catch(() => {
+    throw new Error(`标准看板指标“${label}”未能${selected ? "选中" : "取消选中"}`);
+  });
+  await searchInput.fill("");
+
+  syncLogger.info("Updated Weixin Channels standard data analysis indicator", {
+    label,
+    matchedPath,
+    selected,
+  });
+}
+
+async function configurePromoteDataAnalysisDetail(
+  page: Page,
+  range: ResolvedDateRange,
+): Promise<void> {
+  syncLogger.info("Opening Weixin Channels standard data analysis detail field selector");
+  const editControl = getPromoteDataAnalysisEditControl(page);
+  await editControl.waitFor({
+    state: "visible",
+    timeout: statisticResponseTimeoutMs,
+  });
+  await editControl.click({ timeout: statisticResponseTimeoutMs });
+  syncLogger.info("Clicked Weixin Channels standard data analysis detail edit control");
+
+  const dialog = getPromoteDataAnalysisDetailDialog(page);
+  await dialog.waitFor({
+    state: "visible",
+    timeout: statisticResponseTimeoutMs,
+  });
+  syncLogger.info("Weixin Channels standard data analysis detail field selector is visible");
+
+  const dimensionTab = dialog.getByText("维度", { exact: true }).first();
+  await dimensionTab.click({ timeout: statisticResponseTimeoutMs });
+
+  const dimensionContent = dialog
+    .locator("span.select-label")
+    .filter({ hasText: "选择维度" })
+    .first()
+    .locator("xpath=../../..");
+
+  // The dimensions panel exposes a real “清空” action. Start from an empty
+  // selection so repeated sync runs always produce the requested CSV schema.
+  const clearDimensions = dimensionContent.getByText("清空", { exact: true }).first();
+  await clearDimensions.waitFor({
+    state: "visible",
+    timeout: statisticResponseTimeoutMs,
+  });
+  await clearDimensions.click({ timeout: statisticResponseTimeoutMs });
+
+  for (const label of promoteDataAnalysisDimensionLabels) {
+    await setPromoteDataAnalysisOption(dimensionContent, label, true);
+  }
+  syncLogger.info("Selected Weixin Channels standard data analysis dimensions", {
+    dimensions: [...promoteDataAnalysisDimensionLabels],
+  });
+
+  const indicatorTab = dialog.getByText("指标", { exact: true }).first();
+  await indicatorTab.click({ timeout: statisticResponseTimeoutMs });
+
+  // Metric categories are supplied by the platform and their display names can
+  // change between accounts. Use the dialog's cross-category search instead of
+  // relying on category labels such as “投放数据”.
+  for (const label of promoteDataAnalysisExcludedIndicatorLabels) {
+    await setPromoteDataAnalysisIndicatorBySearch(dialog, label, false);
+  }
+  for (const label of promoteDataAnalysisIndicatorLabels) {
+    await setPromoteDataAnalysisIndicatorBySearch(dialog, label, true);
+  }
+  syncLogger.info("Selected Weixin Channels standard data analysis indicators", {
+    indicators: [...promoteDataAnalysisIndicatorLabels],
+  });
+
+  const detailResponsePromise = page.waitForResponse(
+    (response) =>
+      isPromoteDataAnalysisTableQuery(response.request()) &&
+      doesPromoteDataAnalysisRequestMatchDateRange(response.request(), range),
+    { timeout: statisticResponseTimeoutMs },
+  );
+  const [detailResponse] = await Promise.all([
+    detailResponsePromise,
+    dialog.getByRole("button", { name: "确定", exact: true }).last().click({
+      timeout: statisticResponseTimeoutMs,
+    }),
+  ]);
+  syncLogger.info("Confirmed Weixin Channels standard data analysis detail fields", {
+    targetDate: range.label,
+  });
+  if (!detailResponse.ok()) {
+    throw new Error(
+      `标准看板字段确认后的数据请求失败：HTTP ${detailResponse.status()} ${detailResponse.statusText()}`,
+    );
+  }
+  const responseFailure = await detailResponse.finished();
+  if (responseFailure) {
+    throw new Error(`标准看板字段确认后的数据响应接收失败：${responseFailure.message}`);
+  }
+  assertPromoteDataAnalysisRequestFields(detailResponse.request());
+  await assertStatisticResponseSucceeded(detailResponse);
+  await assertPromoteDataAnalysisResponseHasRows(detailResponse, range.label);
+  await dialog.waitFor({
+    state: "hidden",
+    timeout: statisticResponseTimeoutMs,
+  }).catch(() => undefined);
+
+  const detailCard = getPromoteDataAnalysisDetailCard(page);
+  await getPromoteDataAnalysisLoading(page).waitFor({
+    state: "detached",
+    timeout: statisticResponseTimeoutMs,
+  });
+  await detailCard.waitFor({
+    state: "visible",
+    timeout: statisticResponseTimeoutMs,
+  });
+  // The closed selector remains mounted inside the card and contains hidden
+  // copies of every field label. Do not validate with getByText().first(), as
+  // that can resolve to the hidden modal copy and block the download flow.
+  await getPromoteDataAnalysisDownloadControl(page).waitFor({
+    state: "visible",
+    timeout: statisticResponseTimeoutMs,
+  });
+
+  syncLogger.info("Weixin Channels standard data analysis detail fields configured", {
+    dimensions: [...promoteDataAnalysisDimensionLabels],
+    indicators: [...promoteDataAnalysisIndicatorLabels],
+  });
+}
+
+async function setPromoteDataAnalysisDateRangeWithRetry(
+  page: Page,
+  range: ResolvedDateRange,
+  signal: AbortSignal,
+): Promise<void> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= promoteDataAnalysisDateApplyMaxAttempts; attempt += 1) {
+    try {
+      await setPromoteDataAnalysisDateRange(page, range);
+      return;
+    } catch (error) {
+      lastError = error;
+      syncLogger.warn("Weixin Channels promote target date loading attempt failed", {
+        attempt,
+        error: error instanceof Error ? error.message : String(error),
+        maxAttempts: promoteDataAnalysisDateApplyMaxAttempts,
+        targetDate: range.label,
+      });
+      if (signal.aborted || attempt === promoteDataAnalysisDateApplyMaxAttempts) {
         break;
       }
       await wait(1_000, signal);
@@ -1782,6 +2784,59 @@ async function downloadPromoteStatisticFile(page: Page, targetDate: string): Pro
   throw new Error("点击加热平台数据下载按钮后没有捕获到浏览器下载事件");
 }
 
+async function downloadPromoteDataAnalysisFile(
+  page: Page,
+  targetDate: string,
+  range: ResolvedDateRange,
+): Promise<Download> {
+  const downloadControl = getPromoteDataAnalysisDownloadControl(page);
+  await downloadControl.waitFor({
+    state: "visible",
+    timeout: statisticResponseTimeoutMs,
+  });
+  await downloadControl.scrollIntoViewIfNeeded({
+    timeout: statisticResponseTimeoutMs,
+  });
+  syncLogger.info("Weixin Channels standard data detail download control is ready", {
+    selector: 'a[title="下载"]',
+  });
+
+  const targetResponsePromise = page.waitForResponse(
+    (response) =>
+      isPromoteDataAnalysisDownloadQuery(response.request()) &&
+      doesPromoteDataAnalysisRequestMatchDateRange(response.request(), range),
+    { timeout: downloadEventTimeoutMs },
+  );
+  const [download, targetResponse] = await Promise.all([
+    clickAndMaybeDownload(
+      page,
+      () => downloadControl.click({ timeout: 120_000 }),
+      "standard data analysis download control",
+      targetDate,
+    ),
+    targetResponsePromise,
+  ]);
+
+  if (!targetResponse.ok()) {
+    throw new Error(
+      `标准看板下载数据请求失败：HTTP ${targetResponse.status()} ${targetResponse.statusText()}`,
+    );
+  }
+  const responseFailure = await targetResponse.finished();
+  if (responseFailure) {
+    throw new Error(`标准看板下载数据响应接收失败：${responseFailure.message}`);
+  }
+  assertPromoteDataAnalysisRequestFields(targetResponse.request());
+  await assertStatisticResponseSucceeded(targetResponse);
+  await assertPromoteDataAnalysisResponseHasRows(targetResponse, targetDate);
+
+  if (download) {
+    return download;
+  }
+
+  throw new Error("点击加热平台标准看板下载按钮后没有捕获到浏览器下载事件");
+}
+
 async function clickAndMaybeDownload(
   page: Page,
   click: () => Promise<void>,
@@ -1966,6 +3021,26 @@ async function importPromoteStatisticFile(
   });
 
   return result;
+}
+
+export async function importPromoteDataAnalysisFile(
+  savedFile: {
+    filePath: string;
+    filename: string;
+  },
+  options: {
+    accountName: string;
+    uniqId: string;
+  },
+) {
+  syncLogger.info("Importing Weixin Channels standard data analysis CSV", {
+    accountName: options.accountName,
+    filePath: savedFile.filePath,
+    filename: savedFile.filename,
+    uniqId: options.uniqId,
+  });
+
+  return importPromoteStatisticFile(savedFile, options);
 }
 
 async function clearLoginState(page: Page): Promise<void> {
