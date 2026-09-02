@@ -120,7 +120,7 @@ pnpm exec vp run --verbose app-bundle
 
 ## GitHub 发版与自动更新
 
-Windows 安装包通过 GitHub Releases 分发。应用启动 5 秒后检查更新，此后每 6 小时检查一次；依次尝试 GitHub 官方源、`gh-proxy.com` 和 `gh.3w.pm`，下载失败会自动切换下一个源。可在打包环境中用逗号分隔的 `DRAMA_SYNC_UPDATE_MIRRORS` 覆盖默认源列表。
+Windows 和 macOS 安装包通过 GitHub Releases 分发。macOS 同时发布 Intel `x64` 与 Apple Silicon `arm64` 两个版本，最低支持 macOS 12 Monterey。应用启动 5 秒后检查更新，此后每 6 小时检查一次；依次尝试 GitHub 官方源、`gh-proxy.com` 和 `gh.3w.pm`，下载失败会自动切换下一个源。可在打包环境中用逗号分隔的 `DRAMA_SYNC_UPDATE_MIRRORS` 覆盖默认源列表。
 
 发版前先修改 `package.json` 的版本号并提交全部改动，然后运行：
 
@@ -129,6 +129,16 @@ pnpm release
 ```
 
 仓库的 Actions Secret `PRODUCTION_ENV_BASE64` 需要保存 `.env.production` 的 Base64 内容。工作流只在构建时还原该文件，不会把它提交到 Git；但当前安装包仍然包含运行所需的生产账号配置，因此只能分发给可信用户。
+
+macOS 正式发版还需要在 `Settings > Secrets and variables > Actions` 配置以下 Secret：
+
+- `MAC_CSC_LINK`：Base64 编码的 Developer ID Application `.p12` 证书，或 electron-builder 支持的证书地址
+- `MAC_CSC_KEY_PASSWORD`：证书密码
+- `APPLE_ID`：Apple Developer 账号
+- `APPLE_APP_SPECIFIC_PASSWORD`：Apple ID 专用密码
+- `APPLE_TEAM_ID`：Apple Developer Team ID
+
+GitHub Actions 分别在 `macos-15-intel` 和 `macos-15` runner 上构建，使随包 Playwright Chromium 与目标架构一致。正式构建会验证代码签名、Gatekeeper 和公证票据；任一环节失败都不会创建 Release。本地 Mac 未配置发布证书时仍可生成测试包，但不应对外分发。
 
 更新 Secret 时运行：
 
@@ -142,7 +152,7 @@ pnpm secret:update
 pnpm secret:update -- -Upload
 ```
 
-脚本会拒绝在工作区有未提交改动时运行，然后创建并推送 `v<版本号>` 标签。GitHub Actions 会在 Windows 环境构建安装包，并将安装程序、blockmap 和 `latest.yml` 发布到对应 Release。自动更新依赖这些文件，请勿单独删除。
+脚本会拒绝在工作区有未提交改动时运行，然后创建并推送 `v<版本号>` 标签。GitHub Actions 会构建 Windows x64、macOS x64 和 macOS arm64 安装包，再统一发布到对应 Release。自动更新依赖 `latest.yml`、合并后的 `latest-mac.yml`、ZIP 和 blockmap 等文件，请勿单独删除。
 
 electron-builder 在构建阶段固定使用 `--publish never`，只负责生成发布文件；Release 的创建和上传统一由工作流最后的 `gh release create` 完成，因此不需要配置个人访问令牌 `GH_TOKEN`。
 

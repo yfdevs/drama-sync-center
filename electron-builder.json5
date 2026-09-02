@@ -32,9 +32,17 @@
     },
   ],
   mac: {
+    category: "public.app-category.business",
+    entitlements: "build/entitlements.mac.plist",
+    entitlementsInherit: "build/entitlements.mac.inherit.plist",
+    hardenedRuntime: true,
     icon: "icon.icns",
-    target: ["dmg"],
-    artifactName: "${productName}-Mac-${version}-Installer.${ext}",
+    minimumSystemVersion: "12.0",
+    notarize: true,
+    target: ["dmg", "zip"],
+    // Keep architecture in every filename. electron-updater uses it to select
+    // the matching ZIP when x64 and arm64 releases share latest-mac.yml.
+    artifactName: "drama-sync-center-mac-${version}-${arch}.${ext}",
   },
   win: {
     icon: "icon.ico",

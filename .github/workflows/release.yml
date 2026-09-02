@@ -1,4 +1,4 @@
-name: Release Windows app
+name: Release desktop apps
 
 on:
   push:
@@ -9,10 +9,34 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  verify-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.package-version.outputs.version }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Verify tag matches package version
+        id: package-version
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version v$version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build-windows:
+    needs: verify-release
     runs-on: windows-latest
     timeout-minutes: 60
-
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -28,46 +52,133 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - name: Verify tag matches package version
-        shell: pwsh
-        run: |
-          $version = node -p "require('./package.json').version"
-          if ($env:GITHUB_REF_NAME -ne "v$version") {
-            throw "Tag $env:GITHUB_REF_NAME does not match package version v$version"
-          }
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore production environment
+        env:
+          PRODUCTION_ENV_BASE64: ${{ secrets.PRODUCTION_ENV_BASE64 }}
+        run: node scripts/restore-production-env.mjs
+
+      - name: Build Windows installer
+        run: pnpm build
+
+      - name: Upload Windows release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-release-windows
+          path: |
+            release/**/*.exe
+            release/**/*.exe.blockmap
+            release/**/latest.yml
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  build-macos:
+    needs: verify-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x64
+            runner: macos-15-intel
+          - architecture: arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Verify macOS release environment
+        run: node scripts/verify-macos-release-environment.mjs ${{ matrix.architecture }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Restore production environment
-        shell: pwsh
         env:
           PRODUCTION_ENV_BASE64: ${{ secrets.PRODUCTION_ENV_BASE64 }}
-        run: |
-          if (-not $env:PRODUCTION_ENV_BASE64) {
-            throw "Repository secret PRODUCTION_ENV_BASE64 is not configured"
-          }
-          $bytes = [Convert]::FromBase64String($env:PRODUCTION_ENV_BASE64)
-          [IO.File]::WriteAllBytes((Join-Path $PWD '.env.production'), $bytes)
+        run: node scripts/restore-production-env.mjs
 
-      - name: Build Windows installer
+      - name: Build, sign and notarize macOS app
         run: pnpm build
 
+      - name: Verify macOS signatures and notarization
+        shell: bash
+        run: |
+          app_path="$(find "release/${{ needs.verify-release.outputs.version }}" -type d -name '*.app' -print -quit)"
+          if [[ -z "$app_path" ]]; then
+            echo "Packaged macOS app was not found" >&2
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          spctl --assess --verbose --type exec "$app_path"
+
+          xcrun stapler validate "$app_path"
+
+      - name: Upload macOS release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-release-mac-${{ matrix.architecture }}
+          path: |
+            release/**/*.dmg
+            release/**/*.dmg.blockmap
+            release/**/*.zip
+            release/**/*.zip.blockmap
+            release/**/latest-mac.yml
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  publish-release:
+    needs:
+      - verify-release
+      - build-windows
+      - build-macos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-release-*
+          path: downloaded-artifacts
+
+      - name: Prepare cross-platform release assets
+        run: node scripts/prepare-release-assets.mjs downloaded-artifacts release-assets
+
       - name: Publish GitHub Release
-        shell: pwsh
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $version = node -p "require('./package.json').version"
-          $releaseDir = Join-Path "release" $version
-          $assets = Get-ChildItem -LiteralPath $releaseDir -File | Where-Object {
-            $_.Name -eq 'latest.yml' -or
-            $_.Name -like '*setup-*.exe' -or
-            $_.Name -like '*setup-*.exe.blockmap'
-          } | ForEach-Object FullName
-
-          if (-not $assets -or -not ($assets | Where-Object { $_ -like '*latest.yml' })) {
-            throw "Release assets or latest.yml were not generated"
-          }
-
-          gh release create $env:GITHUB_REF_NAME $assets --generate-notes --verify-tag --title $env:GITHUB_REF_NAME
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --generate-notes \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME"
