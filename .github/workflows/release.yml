@@ -87,12 +87,6 @@ jobs:
             runner: macos-15
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
-    env:
-      CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-      CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -110,6 +104,12 @@ jobs:
 
       - name: Verify macOS release environment
         id: macos-release-environment
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: node scripts/verify-macos-release-environment.mjs ${{ matrix.architecture }}
 
       - name: Install dependencies
@@ -121,6 +121,19 @@ jobs:
         run: node scripts/restore-production-env.mjs
 
       - name: Build, sign and notarize macOS app
+        if: steps.macos-release-environment.outputs.signed == 'true'
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm build
+
+      - name: Build unsigned macOS test app
+        if: steps.macos-release-environment.outputs.signed != 'true'
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: pnpm build
 
       - name: Verify macOS signatures and notarization
