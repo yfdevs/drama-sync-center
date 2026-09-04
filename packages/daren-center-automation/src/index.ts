@@ -13,9 +13,11 @@ export type {
   ImportDramaHeatingActionsOptions,
   ImportDramaHeatingActionsResult,
   ImportKuaishouRecordsOptions,
+  IngestWeChatDramaStatisticsResult,
   ListDataSourcesOptions,
   LoginData,
   RequestResult,
+  WeChatDramaStatisticsPayload,
 } from './client.js'
 export { loadDarenCenterConfig } from './config.js'
 export type { DarenCenterConfig, LoadConfigOptions } from './config.js'

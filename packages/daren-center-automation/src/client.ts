@@ -36,6 +36,23 @@ export interface ImportDramaHeatingActionsResult {
   savedCount: number;
 }
 
+export interface IngestWeChatDramaStatisticsResult {
+  receivedCount: number;
+  reportedTotalCount: number;
+  savedCount: number;
+}
+
+export interface WeChatDramaStatisticsPayload {
+  baseResp?: {
+    errcode?: number;
+    errmsg?: string;
+    [key: string]: unknown;
+  };
+  list: unknown[];
+  totalCount: number;
+  [key: string]: unknown;
+}
+
 export interface ImportCopyrightDataError {
   columnName: string;
   message: string;
@@ -243,6 +260,19 @@ export class DarenCenterClient {
       {
         authenticated: false,
         body: formData,
+        method: "POST",
+      },
+    );
+  }
+
+  async ingestWeChatDramaStatistics(
+    statistics: WeChatDramaStatisticsPayload,
+  ): Promise<RequestResult<IngestWeChatDramaStatisticsResult>> {
+    return this.request<IngestWeChatDramaStatisticsResult, WeChatDramaStatisticsPayload>(
+      "/api/b/wechat-drama/statistics/ingest",
+      {
+        authenticated: false,
+        body: statistics,
         method: "POST",
       },
     );

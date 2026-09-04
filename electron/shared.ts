@@ -53,7 +53,6 @@ export interface KuaishouSettings {
 export interface WeixinChannelsSettings {
   assistantCustomDateRange?: WeixinChannelsCustomDateRange
   assistantDatePreset: WeixinChannelsDatePreset
-  assistantUseTestImportSource: boolean
   downloadDirectory?: string
   promoteStandardAllowDuplicateProcessing: boolean
   promoteStandardCustomDateRange?: WeixinChannelsCustomDateRange
@@ -97,6 +96,7 @@ interface PlatformCatalogItem {
 export interface WeixinChannelsSyncEvent {
   accountName?: string
   failureReason?: string
+  fetchedCount?: number
   filename?: string
   filePath?: string
   message: string
@@ -107,6 +107,7 @@ export interface WeixinChannelsSyncEvent {
   taskType?: string
   targetDate?: string
   timestamp?: string
+  totalCount?: number
   type:
     | 'account-failed'
     | 'downloaded'

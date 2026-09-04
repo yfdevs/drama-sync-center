@@ -102,7 +102,6 @@ const platforms: Platform[] = [
 const importRecordsStorageKey = "drama-sync-center:import-records";
 const defaultWeixinSettings: WeixinChannelsSettings = {
   assistantDatePreset: "previous-day",
-  assistantUseTestImportSource: false,
   promoteStandardAllowDuplicateProcessing: false,
   promoteStandardDatePreset: "previous-day",
   promoteDatePreset: "previous-day",
@@ -409,10 +408,6 @@ function App() {
                   key={platform.id}
                   platform={platform}
                   assistantSyncing={platform.id === "wx" && weixinSyncRunning.assistant}
-                  assistantUseTestImportSource={
-                    platform.id === "wx" && weixinSettings.assistantUseTestImportSource
-                  }
-                  promoteSyncing={platform.id === "wx" && weixinSyncRunning.promote}
                   promoteStandardSyncing={
                     platform.id === "wx" && weixinSyncRunning["promote-standard"]
                   }
@@ -449,7 +444,6 @@ function App() {
                         ? startMeituanSync
                         : undefined
                   }
-                  onPromoteSync={platform.id === "wx" ? () => startWeixinSync("promote") : undefined}
                   onPromoteStandardSync={
                     platform.id === "wx" ? () => startWeixinSync("promote-standard") : undefined
                   }
@@ -514,29 +508,23 @@ function App() {
 
 function PlatformCard({
   assistantSyncing = false,
-  assistantUseTestImportSource = false,
   onConfigure,
   onAssistantSync,
   onOpenDirectory,
-  onPromoteSync,
   onPromoteStandardSync,
   platform,
   promoteStandardAllowDuplicateProcessing = false,
   promoteStandardSyncing = false,
-  promoteSyncing = false,
   syncing = false,
 }: {
   assistantSyncing?: boolean
-  assistantUseTestImportSource?: boolean
   onConfigure?: () => void
   onAssistantSync?: () => void
   onOpenDirectory?: () => void
-  onPromoteSync?: () => void
   onPromoteStandardSync?: () => void
   platform: Platform
   promoteStandardAllowDuplicateProcessing?: boolean
   promoteStandardSyncing?: boolean
-  promoteSyncing?: boolean
   syncing?: boolean
 }) {
   const needsLogin = platform.status === "needs-login";
@@ -547,16 +535,13 @@ function PlatformCard({
     return (
       <WeixinChannelsCard
         assistantSyncing={assistantSyncing}
-        assistantUseTestImportSource={assistantUseTestImportSource}
         onConfigure={onConfigure}
         onAssistantSync={onAssistantSync}
         onOpenDirectory={onOpenDirectory}
-        onPromoteSync={onPromoteSync}
         onPromoteStandardSync={onPromoteStandardSync}
         platform={platform}
         promoteStandardAllowDuplicateProcessing={promoteStandardAllowDuplicateProcessing}
         promoteStandardSyncing={promoteStandardSyncing}
-        promoteSyncing={promoteSyncing}
       />
     );
   }
@@ -609,28 +594,22 @@ function PlatformCard({
 
 function WeixinChannelsCard({
   assistantSyncing,
-  assistantUseTestImportSource,
   onConfigure,
   onAssistantSync,
   onOpenDirectory,
-  onPromoteSync,
   onPromoteStandardSync,
   platform,
   promoteStandardAllowDuplicateProcessing,
   promoteStandardSyncing,
-  promoteSyncing,
 }: {
   assistantSyncing: boolean
-  assistantUseTestImportSource: boolean
   onConfigure?: () => void
   onAssistantSync?: () => void
   onOpenDirectory?: () => void
-  onPromoteSync?: () => void
   onPromoteStandardSync?: () => void
   platform: Platform
   promoteStandardAllowDuplicateProcessing: boolean
   promoteStandardSyncing: boolean
-  promoteSyncing: boolean
 }) {
   return (
     <article className="platform-card platform-card--featured">
@@ -642,11 +621,6 @@ function WeixinChannelsCard({
             <div className="featured-platform__hint">
               {platform.accountCount} 个账号 · 任务启动后逐个登录 <ProcessTooltip />
             </div>
-            {assistantUseTestImportSource ? (
-              <div className="featured-platform__source-warning" role="status">
-                助手导入统一使用“测试导入数据的来源”
-              </div>
-            ) : null}
             {promoteStandardAllowDuplicateProcessing ? (
               <div className="featured-platform__source-warning" role="status">
                 标准看板测试模式：允许重复处理同一账号
@@ -662,9 +636,11 @@ function WeixinChannelsCard({
           <Button icon={<SyncOutlined />} disabled={assistantSyncing} loading={assistantSyncing} onClick={onAssistantSync} type="primary">
             {assistantSyncing ? "处理中" : "助手数据"}
           </Button>
+          {/* “加热明细”入口暂不对用户开放。
           <Button icon={<SyncOutlined />} disabled={promoteSyncing} loading={promoteSyncing} onClick={onPromoteSync}>
             {promoteSyncing ? "处理中" : "加热明细"}
           </Button>
+          */}
           <Button
             disabled={promoteStandardSyncing}
             icon={<SyncOutlined />}
@@ -683,7 +659,7 @@ function ProcessTooltip() {
   return (
     <Tooltip
       placement="bottomLeft"
-      title="默认下载前一天的数据。开始后请按提示手动登录，系统会在每个账号登录后自动完成下载和导入，再继续处理下一个账号。"
+      title="默认处理前一天的数据。开始后请按提示手动登录，系统会在每个账号登录后自动抓取完整数据、保存 JSON 并导入，再继续处理下一个账号。"
     >
       <Button
         aria-label="查看微信视频号数据处理说明"
@@ -857,22 +833,6 @@ function WeixinSettingsDrawer({
             setDraft((current) => ({ ...current, promoteStandardCustomDateRange }));
           }}
           value={draft.promoteStandardDatePreset}
-        />
-      </div>
-
-      <div className="import-source-setting">
-        <div className="import-source-setting__copy">
-          <label htmlFor="weixin-test-import-source">助手导入使用测试数据来源</label>
-          <p>
-            开启后，所有登录账号下载的助手数据都会导入到“测试导入数据的来源”，不再按登录账号名称匹配数据来源。标准看板数据不受影响。
-          </p>
-        </div>
-        <Switch
-          checked={draft.assistantUseTestImportSource}
-          id="weixin-test-import-source"
-          onChange={(assistantUseTestImportSource) =>
-            setDraft((current) => ({ ...current, assistantUseTestImportSource }))
-          }
         />
       </div>
 
@@ -1185,7 +1145,12 @@ function ImportTable({ records }: { records: ImportRecord[] }) {
         </div>
       ),
     },
-    { align: "center", dataIndex: "total", title: "总条数", width: 80 },
+    {
+      align: "center",
+      dataIndex: "total",
+      title: <Tooltip title="微信助手任务显示 list 条数 / totalCount">总条数</Tooltip>,
+      width: 104,
+    },
     {
       align: "center",
       dataIndex: "success",
@@ -1469,6 +1434,13 @@ function createImportRecordFromEvent(event: WeixinChannelsSyncEvent): ImportReco
   const counts = extractImportCounts(event.result);
   const failed = counts.failed ?? 0;
   const importPending = isRecord(event.result) && event.result.importPending === true;
+  const assistantListTotal =
+    !isPromoteEvent &&
+    !isPromoteStandardEvent &&
+    event.fetchedCount !== undefined &&
+    event.totalCount !== undefined
+      ? `${event.fetchedCount} / ${event.totalCount}`
+      : undefined;
 
   return {
     account: event.accountName ?? "微信视频号账号",
@@ -1483,7 +1455,7 @@ function createImportRecordFromEvent(event: WeixinChannelsSyncEvent): ImportReco
     success: counts.success ?? "-",
     taskName: event.taskName ?? fallbackTaskName,
     taskType: event.taskType ?? fallbackTaskType,
-    total: counts.total ?? "-",
+    total: assistantListTotal ?? counts.total ?? "-",
     uniqId: event.uniqId,
   };
 }

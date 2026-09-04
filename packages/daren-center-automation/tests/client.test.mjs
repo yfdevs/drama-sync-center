@@ -389,6 +389,59 @@ void test('uploads drama heating actions as an anonymous CSV request', async () 
   assert.equal(uploadedFile.type, 'text/csv')
 })
 
+void test('ingests the inner WeChat drama statistics payload without authentication', async () => {
+  const calls = []
+  const client = new DarenCenterClient(
+    {
+      baseUrl: 'http://example.test',
+      password: 'password',
+      timeoutMs: 30_000,
+      username: 'client_demo',
+    },
+    {
+      fetch: async (input, init) => {
+        const url = new URL(
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url,
+        )
+        calls.push({ init, url })
+
+        return jsonResponse({
+          clientType: 'B',
+          data: {
+            receivedCount: 899,
+            reportedTotalCount: 899,
+            savedCount: 899,
+          },
+          message: '导入完成',
+          service: 'rights-management-admin',
+        })
+      },
+    },
+  )
+  const statistics = {
+    baseResp: { errcode: 0, errmsg: 'ok' },
+    list: [{ dramaInfo: { dramaUuid: 'drama-1' } }],
+    totalCount: 1,
+  }
+
+  const result = await client.ingestWeChatDramaStatistics(statistics)
+
+  assert.equal(result.body.data.savedCount, 899)
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url.pathname, '/api/b/wechat-drama/statistics/ingest')
+  assert.equal(calls[0].init.method, 'POST')
+  assert.equal(new Headers(calls[0].init.headers).has('authorization'), false)
+  assert.equal(
+    new Headers(calls[0].init.headers).get('content-type'),
+    'application/json;charset=UTF-8',
+  )
+  assert.deepEqual(JSON.parse(calls[0].init.body), statistics)
+})
+
 void test('finds a source ID by exact name across filtered pages', async () => {
   const requestedUrls = []
   const client = new DarenCenterClient(

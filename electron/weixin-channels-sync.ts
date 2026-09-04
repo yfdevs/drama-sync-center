@@ -1,6 +1,6 @@
 import { app, dialog, shell } from "electron";
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile, rename, stat, unlink } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { Download, Locator, Page, Request, Response } from "playwright";
@@ -70,7 +70,6 @@ const statisticDateApplyMaxAttempts = 3;
 const statisticAuthPollIntervalMs = 500;
 const statisticResponseTimeoutMs = 60_000;
 const settingsStoreKey = "weixin-channels-settings";
-const testImportSourceName = "测试导入数据的来源";
 const syncLogger = logger.scope("weixin-channels-sync");
 
 const promoteDataAnalysisDimensionLabels = [
@@ -117,7 +116,6 @@ const activeJobs = new Map<WeixinChannelsSyncMode, ActiveWeixinSyncJob>();
 
 const defaultSettings: WeixinChannelsSettings = {
   assistantDatePreset: "previous-day",
-  assistantUseTestImportSource: false,
   promoteStandardAllowDuplicateProcessing: false,
   promoteStandardDatePreset: "previous-day",
   promoteDatePreset: "previous-day",
@@ -168,7 +166,6 @@ function normalizeWeixinChannelsSettings(value: unknown): WeixinChannelsSettings
   return {
     assistantCustomDateRange: normalizeCustomDateRange(raw.assistantCustomDateRange),
     assistantDatePreset: normalizeDatePreset(raw.assistantDatePreset),
-    assistantUseTestImportSource: raw.assistantUseTestImportSource === true,
     downloadDirectory,
     promoteStandardAllowDuplicateProcessing:
       raw.promoteStandardAllowDuplicateProcessing === true,
@@ -495,8 +492,9 @@ async function runWeixinChannelsSyncLoop(
         targetDate,
         uniqId,
       });
+      let statisticResponse: Response;
       try {
-        await setPlayletStatisticDateRangeWithRetry(page, dateRange, signal);
+        statisticResponse = await setPlayletStatisticDateRangeWithRetry(page, dateRange, signal);
       } catch (error) {
         if (signal.aborted) {
           throw error;
@@ -523,75 +521,80 @@ async function runWeixinChannelsSyncLoop(
         await signOutAccount(page, options, { accountName, uniqId });
         continue;
       }
-      syncLogger.info("Starting Weixin Channels statistic download", {
+      syncLogger.info("Fetching complete Weixin Channels drama statistics", {
         accountName,
         targetDate,
         uniqId,
       });
-      const download = await downloadStatisticFile(page, targetDate);
-      const savedFile = await saveDownloadedFile(download, {
+      const statisticData = await fetchCompleteStatisticData(page, statisticResponse);
+      const savedFile = await saveStatisticJson(statisticData.body, {
         accountName,
         downloadDirectory,
-        filenamePrefix: "助手",
         targetDate,
         uniqId,
       });
 
-      syncLogger.info("Weixin Channels statistic download saved", {
+      syncLogger.info("Weixin Channels drama statistics JSON saved", {
         accountName,
         bytes: savedFile.bytes,
+        fetchedCount: statisticData.fetchedCount,
         filePath: savedFile.filePath,
         filename: savedFile.filename,
-        suggestedFilename: savedFile.suggestedFilename,
         targetDate,
+        totalCount: statisticData.totalCount,
         uniqId,
       });
       options.sendEvent({
         accountName,
+        fetchedCount: statisticData.fetchedCount,
         filePath: savedFile.filePath,
-        message: `下载完成：${savedFile.filename}`,
+        message: `抓取完成：${savedFile.filename}（${statisticData.totalCount} 条）`,
+        mode: "assistant",
         taskName: playletStatisticTaskName,
         taskType: playletStatisticTaskType,
         targetDate,
+        totalCount: statisticData.totalCount,
         type: "downloaded",
         uniqId,
       });
 
-      syncLogger.info("Importing Weixin Channels file into Daren Center", {
+      syncLogger.info("Importing Weixin Channels drama statistics JSON into Daren Center", {
         accountName,
         filePath: savedFile.filePath,
-        sourceName: settings.assistantUseTestImportSource ? testImportSourceName : accountName,
         targetDate,
+        totalCount: statisticData.totalCount,
         uniqId,
       });
       const importedAt = new Date().toISOString();
-      const importResult = await importDownloadedFile(savedFile, {
-        sourceName: settings.assistantUseTestImportSource ? testImportSourceName : accountName,
-      });
+      const importResult = await getDarenCenterClient().ingestWeChatDramaStatistics(
+        statisticData.ingestPayload,
+      );
 
-      syncLogger.info("Weixin Channels import completed", {
+      syncLogger.info("Weixin Channels drama statistics ingest completed", {
         accountName,
-        body: importResult.result.body,
+        body: importResult.body,
         filePath: savedFile.filePath,
-        sourceId: importResult.sourceId,
-        status: importResult.result.status,
-        statusText: importResult.result.statusText,
+        status: importResult.status,
+        statusText: importResult.statusText,
         targetDate,
+        totalCount: statisticData.totalCount,
         uniqId,
       });
       options.sendEvent({
         accountName,
+        fetchedCount: statisticData.fetchedCount,
         filename: savedFile.filename,
         filePath: savedFile.filePath,
-        message: `导入完成：${accountName}`,
-        sourceId: importResult.sourceId,
+        message: `导入完成：${accountName}（${statisticData.fetchedCount} / ${statisticData.totalCount} 条）`,
+        mode: "assistant",
         taskName: playletStatisticTaskName,
         taskType: playletStatisticTaskType,
         targetDate,
         timestamp: importedAt,
+        totalCount: statisticData.totalCount,
         type: "imported",
         uniqId,
-        result: importResult.result.body,
+        result: importResult.body,
       });
 
       await signOutAccount(page, options, { accountName, uniqId });
@@ -1055,7 +1058,10 @@ async function waitForStatisticPageReady(page: Page): Promise<void> {
   syncLogger.info("Weixin Channels statistic page outer download button is visible");
 }
 
-async function setPlayletStatisticDateRange(page: Page, range: ResolvedDateRange): Promise<void> {
+async function setPlayletStatisticDateRange(
+  page: Page,
+  range: ResolvedDateRange,
+): Promise<Response> {
   syncLogger.info("Setting Weixin Channels playlet statistic date range", {
     endDate: range.endDate,
     startDate: range.startDate,
@@ -1169,19 +1175,20 @@ async function setPlayletStatisticDateRange(page: Page, range: ResolvedDateRange
     startDate: actualStartDate,
     startTs: expectedRange.startTs,
   });
+
+  return targetResponse;
 }
 
 async function setPlayletStatisticDateRangeWithRetry(
   page: Page,
   range: ResolvedDateRange,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<Response> {
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= statisticDateApplyMaxAttempts; attempt += 1) {
     try {
-      await setPlayletStatisticDateRange(page, range);
-      return;
+      return await setPlayletStatisticDateRange(page, range);
     } catch (error) {
       lastError = error;
       syncLogger.warn("Weixin Channels target date loading attempt failed", {
@@ -1240,6 +1247,182 @@ function parseStatisticRequestBody(request: Request): Record<string, unknown> | 
   } catch {
     return undefined;
   }
+}
+
+interface CompleteStatisticData {
+  body: Record<string, unknown>;
+  fetchedCount: number;
+  ingestPayload: {
+    list: unknown[];
+    totalCount: number;
+    [key: string]: unknown;
+  };
+  totalCount: number;
+}
+
+async function fetchCompleteStatisticData(
+  page: Page,
+  initialResponse: Response,
+): Promise<CompleteStatisticData> {
+  const initialBody = await readStatisticResponseBody(initialResponse);
+  assertStatisticBodySucceeded(initialBody);
+
+  const initialPayload = extractStatisticIngestPayload(initialBody);
+  const totalCount = initialPayload.totalCount;
+
+  const initialRequest = initialResponse.request();
+  const initialRequestBody = parseStatisticRequestBody(initialRequest);
+  if (!initialRequestBody) {
+    throw new Error("无法读取视频号剧集统计请求参数");
+  }
+
+  const pageSize = Math.max(1, totalCount);
+  const requestBody = {
+    ...initialRequestBody,
+    currentPage: 1,
+    pageSize,
+    timestamp: String(Date.now()),
+  };
+
+  syncLogger.info("Captured Weixin Channels statistic request and response", {
+    currentPage: initialRequestBody.currentPage,
+    initialListCount: initialPayload.list.length,
+    initialPageSize: initialRequestBody.pageSize,
+    requestedPageSize: pageSize,
+    responseStatus: initialResponse.status(),
+    totalCount,
+  });
+
+  if (totalCount === 0) {
+    return {
+      body: initialBody,
+      fetchedCount: initialPayload.list.length,
+      ingestPayload: initialPayload,
+      totalCount,
+    };
+  }
+
+  const originalHeaders = await initialRequest.allHeaders();
+  const forwardedHeaders: Record<string, string> = {};
+  for (const headerName of [
+    "accept",
+    "cache-control",
+    "content-type",
+    "finger-print-device-id",
+    "pragma",
+    "x-wechat-uin",
+  ]) {
+    const value = originalHeaders[headerName];
+    if (value) {
+      forwardedHeaders[headerName] = value;
+    }
+  }
+  forwardedHeaders.accept ??= "*/*";
+  forwardedHeaders["content-type"] ??= "application/json";
+
+  const fetchResult = await page.evaluate(
+    async ({ body, headers, timeoutMs, url }) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const response = await fetch(url, {
+          body: JSON.stringify(body),
+          credentials: "include",
+          headers,
+          method: "POST",
+          signal: controller.signal,
+        });
+
+        return {
+          bodyText: await response.text(),
+          ok: response.ok,
+          status: response.status,
+          statusText: response.statusText,
+        };
+      } finally {
+        clearTimeout(timeout);
+      }
+    },
+    {
+      body: requestBody,
+      headers: forwardedHeaders,
+      timeoutMs: statisticResponseTimeoutMs,
+      url: initialRequest.url(),
+    },
+  );
+
+  if (!fetchResult.ok) {
+    throw new Error(
+      `视频号完整剧集统计数据请求失败：HTTP ${fetchResult.status} ${fetchResult.statusText}`,
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(fetchResult.bodyText);
+  } catch (error) {
+    throw new Error(
+      `视频号完整剧集统计数据响应不是有效 JSON：${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  if (!isRecord(body)) {
+    throw new Error("视频号完整剧集统计数据响应格式无效");
+  }
+  assertStatisticBodySucceeded(body);
+
+  const ingestPayload = extractStatisticIngestPayload(body);
+  const fetchedCount = ingestPayload.list.length;
+  if (fetchedCount < totalCount) {
+    throw new Error(
+      `视频号完整剧集统计数据不完整：期望 ${totalCount} 条，实际获取 ${fetchedCount} 条`,
+    );
+  }
+
+  syncLogger.info("Fetched complete Weixin Channels drama statistics response", {
+    fetchedCount,
+    pageSize,
+    totalCount,
+  });
+
+  return {
+    body,
+    fetchedCount,
+    ingestPayload,
+    totalCount,
+  };
+}
+
+function extractStatisticIngestPayload(body: Record<string, unknown>): {
+  list: unknown[];
+  totalCount: number;
+  [key: string]: unknown;
+} {
+  const payload = isRecord(body.data) ? body.data : body;
+
+  if (!Array.isArray(payload.list)) {
+    throw new Error("视频号剧集统计响应 data.list 不是有效数组");
+  }
+
+  const totalCount = toNonNegativeInteger(payload.totalCount);
+  if (totalCount === undefined) {
+    throw new Error("视频号剧集统计响应 data.totalCount 不是有效非负整数");
+  }
+
+  return {
+    ...payload,
+    list: payload.list,
+    totalCount,
+  };
+}
+
+function toNonNegativeInteger(value: unknown): number | undefined {
+  const count = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+
+  return typeof count === "number" && Number.isInteger(count) && count >= 0
+    ? count
+    : undefined;
 }
 
 /**
@@ -1340,6 +1523,11 @@ function assertPromoteDataAnalysisRequestFields(request: Request): void {
 }
 
 async function assertStatisticResponseSucceeded(response: Response): Promise<void> {
+  const body = await readStatisticResponseBody(response);
+  assertStatisticBodySucceeded(body);
+}
+
+async function readStatisticResponseBody(response: Response): Promise<Record<string, unknown>> {
   let body: unknown;
 
   try {
@@ -1354,6 +1542,10 @@ async function assertStatisticResponseSucceeded(response: Response): Promise<voi
     throw new Error("视频号剧集统计数据响应格式无效");
   }
 
+  return body;
+}
+
+function assertStatisticBodySucceeded(body: Record<string, unknown>): void {
   const errorCode = getStatisticResponseErrorCode(body);
   if (errorCode !== undefined && errorCode !== 0) {
     throw new Error(`视频号剧集统计数据接口返回失败状态：${errorCode}`);
@@ -2754,21 +2946,6 @@ function isStableFinderUser(authData: WeixinAuthData): boolean {
   return Boolean(authData.errCode === 0 && nickname && uniqId && !/^用户\d+$/.test(nickname));
 }
 
-async function downloadStatisticFile(page: Page, targetDate: string): Promise<Download> {
-  const outerDownload = await clickAndMaybeDownload(
-    page,
-    () => page.getByText("下载数据").click({ timeout: 120_000 }),
-    "outer download data button",
-    targetDate,
-  );
-
-  if (outerDownload) {
-    return outerDownload;
-  }
-
-  throw new Error("点击页面外层下载数据后没有捕获到浏览器下载事件");
-}
-
 async function downloadPromoteStatisticFile(page: Page, targetDate: string): Promise<Download> {
   const download = await clickAndMaybeDownload(
     page,
@@ -2875,6 +3052,46 @@ async function clickAndMaybeDownload(
   return download;
 }
 
+async function saveStatisticJson(
+  body: Record<string, unknown>,
+  options: {
+    accountName: string;
+    downloadDirectory: string;
+    targetDate: string;
+    uniqId: string;
+  },
+): Promise<{
+  bytes: number;
+  filePath: string;
+  filename: string;
+}> {
+  const preferredFilename = `助手_${sanitizeFilename(options.accountName)}_${sanitizeFilename(
+    options.uniqId,
+  )}_${sanitizeFilename(options.targetDate)}_剧集统计.json`;
+  const preferredFilePath = path.join(options.downloadDirectory, preferredFilename);
+  const filePath = await getAvailableDownloadFilePath(preferredFilePath);
+  const temporaryFilePath = `${filePath}.${process.pid}.${Date.now()}.partial`;
+  const content = `${JSON.stringify(body, undefined, 2)}\n`;
+
+  try {
+    await writeFile(temporaryFilePath, content, {
+      encoding: "utf8",
+      flag: "wx",
+    });
+    await rename(temporaryFilePath, filePath);
+  } catch (error) {
+    await unlink(temporaryFilePath).catch(() => undefined);
+    throw error;
+  }
+
+  const fileStats = await stat(filePath);
+  return {
+    bytes: fileStats.size,
+    filePath,
+    filename: path.basename(filePath),
+  };
+}
+
 async function saveDownloadedFile(
   download: Download,
   options: {
@@ -2945,44 +3162,6 @@ async function saveDownloadStream(download: Download, filePath: string): Promise
     await unlink(temporaryFilePath).catch(() => undefined);
     throw error;
   }
-}
-
-async function importDownloadedFile(
-  savedFile: {
-    filePath: string;
-    filename: string;
-  },
-  options: {
-    sourceName: string;
-  },
-) {
-  const client = getDarenCenterClient();
-  syncLogger.info("Resolving Daren Center source id", {
-    sourceName: options.sourceName,
-  });
-  const sourceId = await client.getSourceId(options.sourceName);
-  syncLogger.info("Resolved Daren Center source id", {
-    sourceId,
-    sourceName: options.sourceName,
-  });
-  const fileBuffer = await readFile(savedFile.filePath);
-  syncLogger.info("Read downloaded file for import", {
-    bytes: fileBuffer.byteLength,
-    filePath: savedFile.filePath,
-  });
-
-  const result = await client.importCopyrightData({
-    file: new Blob([new Uint8Array(fileBuffer)], {
-      type: contentTypeForFile(savedFile.filename),
-    }),
-    filename: savedFile.filename,
-    sourceId,
-  });
-
-  return {
-    result,
-    sourceId,
-  };
 }
 
 async function importPromoteStatisticFile(
