@@ -57,8 +57,10 @@ const statisticListApiName = "get-finder-native-drama-statistics-list";
 const promoteOrderListApiName = "searchFeedPromotionOrderList";
 const promoteDataAnalysisQueryApiName = "MMFinderPromotionOrderApiSvr/queryIndicator";
 const statisticLoadingSelector = ".common-table-loading";
-const playletStatisticTaskName = "助手 · 剧集数据处理";
-const playletStatisticTaskType = "weixin-channels-playlet-statistic";
+const playletExcelTaskName = "助手 · Excel 下载导入";
+const playletExcelTaskType = "weixin-channels-playlet-statistic";
+const playletJsonTaskName = "助手 · JSON 抓取导入";
+const playletJsonTaskType = "weixin-channels-playlet-statistic-json";
 const promoteStatisticTaskName = "加热平台 · 数据明细处理";
 const promoteStatisticTaskType = "weixin-channels-promote-statistic";
 const promoteDataAnalysisTaskName = "加热平台 · 标准看板数据处理";
@@ -70,6 +72,7 @@ const statisticDateApplyMaxAttempts = 3;
 const statisticAuthPollIntervalMs = 500;
 const statisticResponseTimeoutMs = 60_000;
 const settingsStoreKey = "weixin-channels-settings";
+const testImportSourceName = "测试导入数据的来源";
 const syncLogger = logger.scope("weixin-channels-sync");
 
 const promoteDataAnalysisDimensionLabels = [
@@ -116,6 +119,7 @@ const activeJobs = new Map<WeixinChannelsSyncMode, ActiveWeixinSyncJob>();
 
 const defaultSettings: WeixinChannelsSettings = {
   assistantDatePreset: "previous-day",
+  assistantUseTestImportSource: false,
   promoteStandardAllowDuplicateProcessing: false,
   promoteStandardDatePreset: "previous-day",
   promoteDatePreset: "previous-day",
@@ -166,6 +170,7 @@ function normalizeWeixinChannelsSettings(value: unknown): WeixinChannelsSettings
   return {
     assistantCustomDateRange: normalizeCustomDateRange(raw.assistantCustomDateRange),
     assistantDatePreset: normalizeDatePreset(raw.assistantDatePreset),
+    assistantUseTestImportSource: raw.assistantUseTestImportSource === true,
     downloadDirectory,
     promoteStandardAllowDuplicateProcessing:
       raw.promoteStandardAllowDuplicateProcessing === true,
@@ -279,12 +284,12 @@ export function startWeixinChannelsSync(
   }
 
   const abortController = new AbortController();
-  const runJob = mode === "promote"
-    ? runWeixinPromoteSyncLoop
+  const runPromise = mode === "promote"
+    ? runWeixinPromoteSyncLoop(options, abortController.signal)
     : mode === "promote-standard"
-      ? runWeixinPromoteDataAnalysisSyncLoop
-      : runWeixinChannelsSyncLoop;
-  const promise = runJob(options, abortController.signal)
+      ? runWeixinPromoteDataAnalysisSyncLoop(options, abortController.signal)
+      : runWeixinChannelsSyncLoop(options, abortController.signal, mode);
+  const promise = runPromise
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       syncLogger.error("Weixin Channels sync failed", { error: message });
@@ -315,7 +320,9 @@ export function startWeixinChannelsSync(
       ? "加热平台标准数据分析任务已启动"
       : mode === "promote"
         ? "加热平台数据处理任务已启动"
-        : "助手剧集数据处理任务已启动",
+        : mode === "assistant-json"
+          ? "助手 JSON 数据抓取任务已启动"
+          : "助手 Excel 数据下载任务已启动",
     mode,
     type: "started",
   });
@@ -358,7 +365,19 @@ export async function stopWeixinChannelsSync(
 async function runWeixinChannelsSyncLoop(
   options: StartWeixinChannelsSyncOptions,
   signal: AbortSignal,
+  mode: "assistant" | "assistant-json",
 ): Promise<void> {
+  const task = mode === "assistant-json"
+    ? {
+        mode,
+        taskName: playletJsonTaskName,
+        taskType: playletJsonTaskType,
+      }
+    : {
+        mode,
+        taskName: playletExcelTaskName,
+        taskType: playletExcelTaskType,
+      };
   const processedUniqIds = new Set<string>();
   const settings = getWeixinChannelsSettings();
   const dateRange = resolveDateRange(
@@ -411,8 +430,7 @@ async function runWeixinChannelsSyncLoop(
       await prepareNextLogin(page);
       options.sendEvent({
         message: "请在打开的微信视频号登录页扫码",
-        taskName: playletStatisticTaskName,
-        taskType: playletStatisticTaskType,
+        ...task,
         type: "waiting-for-scan",
       });
 
@@ -420,8 +438,7 @@ async function runWeixinChannelsSyncLoop(
       syncLogger.info("Weixin Channels login page completed; opening statistic page");
       options.sendEvent({
         message: "扫码完成，正在进入数据页确认视频号身份",
-        taskName: playletStatisticTaskName,
-        taskType: playletStatisticTaskType,
+        ...task,
         type: "logged-in",
       });
 
@@ -448,13 +465,12 @@ async function runWeixinChannelsSyncLoop(
           accountName,
           failureReason,
           message: `处理失败：${accountName}（${failureReason}）`,
-          taskName: playletStatisticTaskName,
-          taskType: playletStatisticTaskType,
+          ...task,
           targetDate,
           timestamp: new Date().toISOString(),
           type: "account-failed",
         });
-        await signOutAccount(page, options, { accountName });
+        await signOutAccount(page, options, { accountName }, task);
         continue;
       }
 
@@ -469,14 +485,13 @@ async function runWeixinChannelsSyncLoop(
           accountName,
           failureReason,
           message: `处理失败：${accountName}（${failureReason}）`,
-          taskName: playletStatisticTaskName,
-          taskType: playletStatisticTaskType,
+          ...task,
           targetDate,
           timestamp: new Date().toISOString(),
           type: "account-failed",
           uniqId,
         });
-        await signOutAccount(page, options, { accountName, uniqId });
+        await signOutAccount(page, options, { accountName, uniqId }, task);
         continue;
       }
 
@@ -511,16 +526,89 @@ async function runWeixinChannelsSyncLoop(
           accountName,
           failureReason,
           message: `处理失败：${accountName}（${failureReason}）`,
-          taskName: playletStatisticTaskName,
-          taskType: playletStatisticTaskType,
+          ...task,
           targetDate,
           timestamp: new Date().toISOString(),
           type: "account-failed",
           uniqId,
         });
-        await signOutAccount(page, options, { accountName, uniqId });
+        await signOutAccount(page, options, { accountName, uniqId }, task);
         continue;
       }
+
+      if (mode === "assistant") {
+        syncLogger.info("Starting Weixin Channels statistic Excel download", {
+          accountName,
+          targetDate,
+          uniqId,
+        });
+        const download = await downloadStatisticFile(page, targetDate);
+        const savedFile = await saveDownloadedFile(download, {
+          accountName,
+          downloadDirectory,
+          filenamePrefix: "助手",
+          targetDate,
+          uniqId,
+        });
+
+        syncLogger.info("Weixin Channels statistic Excel download saved", {
+          accountName,
+          bytes: savedFile.bytes,
+          filePath: savedFile.filePath,
+          filename: savedFile.filename,
+          suggestedFilename: savedFile.suggestedFilename,
+          targetDate,
+          uniqId,
+        });
+        options.sendEvent({
+          accountName,
+          filePath: savedFile.filePath,
+          message: `Excel 下载完成：${savedFile.filename}`,
+          ...task,
+          targetDate,
+          type: "downloaded",
+          uniqId,
+        });
+
+        syncLogger.info("Importing Weixin Channels statistic Excel into Daren Center", {
+          accountName,
+          filePath: savedFile.filePath,
+          targetDate,
+          uniqId,
+        });
+        const importedAt = new Date().toISOString();
+        const importResult = await importAssistantExcelFile(savedFile, {
+          sourceName: settings.assistantUseTestImportSource ? testImportSourceName : accountName,
+        });
+
+        syncLogger.info("Weixin Channels statistic Excel import completed", {
+          accountName,
+          body: importResult.result.body,
+          filePath: savedFile.filePath,
+          sourceId: importResult.sourceId,
+          status: importResult.result.status,
+          statusText: importResult.result.statusText,
+          targetDate,
+          uniqId,
+        });
+        options.sendEvent({
+          accountName,
+          filename: savedFile.filename,
+          filePath: savedFile.filePath,
+          message: `Excel 导入完成：${accountName}`,
+          result: importResult.result.body,
+          sourceId: importResult.sourceId,
+          ...task,
+          targetDate,
+          timestamp: importedAt,
+          type: "imported",
+          uniqId,
+        });
+
+        await signOutAccount(page, options, { accountName, uniqId }, task);
+        continue;
+      }
+
       syncLogger.info("Fetching complete Weixin Channels drama statistics", {
         accountName,
         targetDate,
@@ -549,9 +637,7 @@ async function runWeixinChannelsSyncLoop(
         fetchedCount: statisticData.fetchedCount,
         filePath: savedFile.filePath,
         message: `抓取完成：${savedFile.filename}（${statisticData.totalCount} 条）`,
-        mode: "assistant",
-        taskName: playletStatisticTaskName,
-        taskType: playletStatisticTaskType,
+        ...task,
         targetDate,
         totalCount: statisticData.totalCount,
         type: "downloaded",
@@ -586,9 +672,7 @@ async function runWeixinChannelsSyncLoop(
         filename: savedFile.filename,
         filePath: savedFile.filePath,
         message: `导入完成：${accountName}（${statisticData.fetchedCount} / ${statisticData.totalCount} 条）`,
-        mode: "assistant",
-        taskName: playletStatisticTaskName,
-        taskType: playletStatisticTaskType,
+        ...task,
         targetDate,
         timestamp: importedAt,
         totalCount: statisticData.totalCount,
@@ -597,7 +681,7 @@ async function runWeixinChannelsSyncLoop(
         result: importResult.body,
       });
 
-      await signOutAccount(page, options, { accountName, uniqId });
+      await signOutAccount(page, options, { accountName, uniqId }, task);
     }
   } finally {
     syncLogger.info("Closing Weixin Channels browser context");
@@ -2921,8 +3005,8 @@ async function signOutAccount(
     taskType: string;
   } = {
     mode: "assistant",
-    taskName: playletStatisticTaskName,
-    taskType: playletStatisticTaskType,
+    taskName: playletExcelTaskName,
+    taskType: playletExcelTaskType,
   },
 ): Promise<void> {
   syncLogger.info("Clearing Weixin Channels login state", account);
@@ -2944,6 +3028,21 @@ function isStableFinderUser(authData: WeixinAuthData): boolean {
   const uniqId = finderUser?.uniqId?.trim();
 
   return Boolean(authData.errCode === 0 && nickname && uniqId && !/^用户\d+$/.test(nickname));
+}
+
+async function downloadStatisticFile(page: Page, targetDate: string): Promise<Download> {
+  const download = await clickAndMaybeDownload(
+    page,
+    () => page.getByText("下载数据").click({ timeout: 120_000 }),
+    "assistant statistic download control",
+    targetDate,
+  );
+
+  if (download) {
+    return download;
+  }
+
+  throw new Error("点击助手页面下载数据后没有捕获到浏览器下载事件");
 }
 
 async function downloadPromoteStatisticFile(page: Page, targetDate: string): Promise<Download> {
@@ -3162,6 +3261,44 @@ async function saveDownloadStream(download: Download, filePath: string): Promise
     await unlink(temporaryFilePath).catch(() => undefined);
     throw error;
   }
+}
+
+async function importAssistantExcelFile(
+  savedFile: {
+    filePath: string;
+    filename: string;
+  },
+  options: {
+    sourceName: string;
+  },
+) {
+  const client = getDarenCenterClient();
+  syncLogger.info("Resolving Daren Center source id for assistant Excel import", {
+    sourceName: options.sourceName,
+  });
+  const sourceId = await client.getSourceId(options.sourceName);
+  syncLogger.info("Resolved Daren Center source id for assistant Excel import", {
+    sourceId,
+    sourceName: options.sourceName,
+  });
+  const fileBuffer = await readFile(savedFile.filePath);
+  syncLogger.info("Read assistant Excel file for import", {
+    bytes: fileBuffer.byteLength,
+    filePath: savedFile.filePath,
+  });
+
+  const result = await client.importCopyrightData({
+    file: new Blob([new Uint8Array(fileBuffer)], {
+      type: contentTypeForFile(savedFile.filename),
+    }),
+    filename: savedFile.filename,
+    sourceId,
+  });
+
+  return {
+    result,
+    sourceId,
+  };
 }
 
 async function importPromoteStatisticFile(

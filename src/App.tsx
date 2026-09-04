@@ -78,12 +78,17 @@ const platformLogoUrl = (fileName: string): string =>
   `${import.meta.env.BASE_URL}platform/${fileName}`;
 
 const normalizePlatformLogoUrl = (logo: string): string =>
-  logo.startsWith("/platform/")
-    ? `${import.meta.env.BASE_URL}${logo.slice(1)}`
-    : logo;
+  logo.startsWith("/platform/") ? `${import.meta.env.BASE_URL}${logo.slice(1)}` : logo;
 
 const platforms: Platform[] = [
-  { automationId: "weixin-channels", id: "wx", name: "微信视频号", logo: platformLogoUrl("wx.svg"), accountCount: 3, status: "normal" },
+  {
+    automationId: "weixin-channels",
+    id: "wx",
+    name: "微信视频号",
+    logo: platformLogoUrl("wx.svg"),
+    accountCount: 3,
+    status: "normal",
+  },
   {
     automationId: "kuaishou",
     id: "kuaishou",
@@ -92,16 +97,51 @@ const platforms: Platform[] = [
     accountCount: 4,
     status: "normal",
   },
-  { automationId: "pinduoduo", id: "pdd", name: "拼多多", logo: platformLogoUrl("pdd.svg"), accountCount: 2, status: "needs-login" },
-  { automationId: "meituan", id: "meituan", name: "美团", logo: platformLogoUrl("meituan.svg"), accountCount: 0, status: "normal" },
-  { automationId: "tencent-video", id: "tencent", name: "腾讯视频", accountCount: 3, status: "normal" },
-  { automationId: "qq-short-drama", id: "qq", name: "QQ漫剧", logo: platformLogoUrl("qq.svg"), accountCount: 2, status: "normal" },
-  { automationId: "tiktok-drama", id: "tiktok", name: "TikTok", logo: platformLogoUrl("tiktok.svg"), accountCount: 2, status: "normal" },
+  {
+    automationId: "pinduoduo",
+    id: "pdd",
+    name: "拼多多",
+    logo: platformLogoUrl("pdd.svg"),
+    accountCount: 2,
+    status: "needs-login",
+  },
+  {
+    automationId: "meituan",
+    id: "meituan",
+    name: "美团",
+    logo: platformLogoUrl("meituan.svg"),
+    accountCount: 0,
+    status: "normal",
+  },
+  {
+    automationId: "tencent-video",
+    id: "tencent",
+    name: "腾讯视频",
+    accountCount: 3,
+    status: "normal",
+  },
+  {
+    automationId: "qq-short-drama",
+    id: "qq",
+    name: "QQ漫剧",
+    logo: platformLogoUrl("qq.svg"),
+    accountCount: 2,
+    status: "normal",
+  },
+  {
+    automationId: "tiktok-drama",
+    id: "tiktok",
+    name: "TikTok",
+    logo: platformLogoUrl("tiktok.svg"),
+    accountCount: 2,
+    status: "normal",
+  },
 ];
 
 const importRecordsStorageKey = "drama-sync-center:import-records";
 const defaultWeixinSettings: WeixinChannelsSettings = {
   assistantDatePreset: "previous-day",
+  assistantUseTestImportSource: false,
   promoteStandardAllowDuplicateProcessing: false,
   promoteStandardDatePreset: "previous-day",
   promoteDatePreset: "previous-day",
@@ -123,8 +163,11 @@ function App() {
   const [kuaishouSyncRunning, setKuaishouSyncRunning] = useState(false);
   const [meituanSyncRunning, setMeituanSyncRunning] = useState(false);
   const [platformItems, setPlatformItems] = useState(platforms);
-  const [weixinSyncRunning, setWeixinSyncRunning] = useState<Record<WeixinChannelsSyncMode, boolean>>({
+  const [weixinSyncRunning, setWeixinSyncRunning] = useState<
+    Record<WeixinChannelsSyncMode, boolean>
+  >({
     assistant: false,
+    "assistant-json": false,
     promote: false,
     "promote-standard": false,
   });
@@ -141,13 +184,12 @@ function App() {
       return undefined;
     }
 
-    void Promise.all([
-      window.desktop.updater.getState(),
-      window.desktop.updater.getSources(),
-    ]).then(([nextState, sources]) => {
-      setUpdateState(nextState);
-      setUpdateSources(sources);
-    });
+    void Promise.all([window.desktop.updater.getState(), window.desktop.updater.getSources()]).then(
+      ([nextState, sources]) => {
+        setUpdateState(nextState);
+        setUpdateSources(sources);
+      },
+    );
 
     return window.desktop.updater.onStatus(setUpdateState);
   }, []);
@@ -160,9 +202,7 @@ function App() {
     void window.desktop.platforms
       .list()
       .then((catalog) => {
-        const accountCounts = new Map(
-          catalog.map((item) => [item.id, item.accounts.length]),
-        );
+        const accountCounts = new Map(catalog.map((item) => [item.id, item.accounts.length]));
         setPlatformItems((items) =>
           items.map((item) => ({
             ...item,
@@ -190,14 +230,14 @@ function App() {
         setKuaishouSyncRunning(true);
       }
       if (event.type === "waiting-for-login") {
-        setPlatformItems((items) => items.map((item) =>
-          item.id === "kuaishou" ? { ...item, status: "needs-login" } : item
-        ));
+        setPlatformItems((items) =>
+          items.map((item) => (item.id === "kuaishou" ? { ...item, status: "needs-login" } : item)),
+        );
       }
       if (event.type === "logged-in" || event.type === "imported") {
-        setPlatformItems((items) => items.map((item) =>
-          item.id === "kuaishou" ? { ...item, status: "normal" } : item
-        ));
+        setPlatformItems((items) =>
+          items.map((item) => (item.id === "kuaishou" ? { ...item, status: "normal" } : item)),
+        );
       }
       if (event.type === "stopped" || event.type === "error") {
         setKuaishouSyncRunning(false);
@@ -282,7 +322,9 @@ function App() {
         ? "正在启动微信视频号标准数据分析任务"
         : mode === "promote"
           ? "正在启动微信视频号加热明细任务"
-          : "正在启动微信视频号助手处理任务",
+          : mode === "assistant-json"
+            ? "正在启动微信视频号助手 JSON 抓取任务"
+            : "正在启动微信视频号助手 Excel 下载任务",
     );
     const result = await window.desktop.weixinChannels.startSync(mode);
 
@@ -308,7 +350,9 @@ function App() {
     }
     try {
       const result = await window.desktop.weixinChannels.openDownloadDirectory();
-      setWeixinSyncMessage(result.error ? `打开文件夹失败：${result.error}` : `已打开：${result.path}`);
+      setWeixinSyncMessage(
+        result.error ? `打开文件夹失败：${result.error}` : `已打开：${result.path}`,
+      );
     } catch (error) {
       setWeixinSyncMessage(`打开文件夹失败：${getErrorMessage(error)}`);
     }
@@ -360,7 +404,9 @@ function App() {
     }
 
     const result = await window.desktop.kuaishou.openDownloadDirectory();
-    setWeixinSyncMessage(result.error ? `打开文件夹失败：${result.error}` : `已打开：${result.path}`);
+    setWeixinSyncMessage(
+      result.error ? `打开文件夹失败：${result.error}` : `已打开：${result.path}`,
+    );
   }
 
   async function openMeituanDownloadDirectory() {
@@ -369,7 +415,9 @@ function App() {
     }
 
     const result = await window.desktop.meituan.openDownloadDirectory();
-    setWeixinSyncMessage(result.error ? `打开文件夹失败：${result.error}` : `已打开：${result.path}`);
+    setWeixinSyncMessage(
+      result.error ? `打开文件夹失败：${result.error}` : `已打开：${result.path}`,
+    );
   }
 
   function clearImportRecords() {
@@ -407,13 +455,16 @@ function App() {
                 <PlatformCard
                   key={platform.id}
                   platform={platform}
+                  assistantJsonSyncing={platform.id === "wx" && weixinSyncRunning["assistant-json"]}
                   assistantSyncing={platform.id === "wx" && weixinSyncRunning.assistant}
+                  assistantUseTestImportSource={
+                    platform.id === "wx" && weixinSettings.assistantUseTestImportSource
+                  }
                   promoteStandardSyncing={
                     platform.id === "wx" && weixinSyncRunning["promote-standard"]
                   }
                   promoteStandardAllowDuplicateProcessing={
-                    platform.id === "wx" &&
-                    weixinSettings.promoteStandardAllowDuplicateProcessing
+                    platform.id === "wx" && weixinSettings.promoteStandardAllowDuplicateProcessing
                   }
                   syncing={
                     (platform.id === "meituan" && meituanSyncRunning) ||
@@ -431,18 +482,21 @@ function App() {
                       ? openWeixinDownloadDirectory
                       : platform.id === "kuaishou"
                         ? openKuaishouDownloadDirectory
-                      : platform.id === "meituan"
-                        ? openMeituanDownloadDirectory
-                        : undefined
+                        : platform.id === "meituan"
+                          ? openMeituanDownloadDirectory
+                          : undefined
                   }
                   onAssistantSync={
                     platform.id === "wx"
                       ? () => startWeixinSync("assistant")
                       : platform.id === "kuaishou"
                         ? startKuaishouSync
-                      : platform.id === "meituan"
-                        ? startMeituanSync
-                        : undefined
+                        : platform.id === "meituan"
+                          ? startMeituanSync
+                          : undefined
+                  }
+                  onAssistantJsonSync={
+                    platform.id === "wx" ? () => startWeixinSync("assistant-json") : undefined
                   }
                   onPromoteStandardSync={
                     platform.id === "wx" ? () => startWeixinSync("promote-standard") : undefined
@@ -465,7 +519,12 @@ function App() {
                   onConfirm={clearImportRecords}
                   title="清空全部处理记录？"
                 >
-                  <Button danger disabled={importRecords.length === 0} icon={<DeleteOutlined />} type="text">
+                  <Button
+                    danger
+                    disabled={importRecords.length === 0}
+                    icon={<DeleteOutlined />}
+                    type="text"
+                  >
                     清空记录
                   </Button>
                 </Popconfirm>
@@ -507,8 +566,11 @@ function App() {
 }
 
 function PlatformCard({
+  assistantJsonSyncing = false,
   assistantSyncing = false,
+  assistantUseTestImportSource = false,
   onConfigure,
+  onAssistantJsonSync,
   onAssistantSync,
   onOpenDirectory,
   onPromoteStandardSync,
@@ -517,15 +579,18 @@ function PlatformCard({
   promoteStandardSyncing = false,
   syncing = false,
 }: {
-  assistantSyncing?: boolean
-  onConfigure?: () => void
-  onAssistantSync?: () => void
-  onOpenDirectory?: () => void
-  onPromoteStandardSync?: () => void
-  platform: Platform
-  promoteStandardAllowDuplicateProcessing?: boolean
-  promoteStandardSyncing?: boolean
-  syncing?: boolean
+  assistantJsonSyncing?: boolean;
+  assistantSyncing?: boolean;
+  assistantUseTestImportSource?: boolean;
+  onConfigure?: () => void;
+  onAssistantJsonSync?: () => void;
+  onAssistantSync?: () => void;
+  onOpenDirectory?: () => void;
+  onPromoteStandardSync?: () => void;
+  platform: Platform;
+  promoteStandardAllowDuplicateProcessing?: boolean;
+  promoteStandardSyncing?: boolean;
+  syncing?: boolean;
 }) {
   const needsLogin = platform.status === "needs-login";
   const canStart = Boolean(onAssistantSync);
@@ -534,8 +599,11 @@ function PlatformCard({
   if (platform.id === "wx") {
     return (
       <WeixinChannelsCard
+        assistantJsonSyncing={assistantJsonSyncing}
         assistantSyncing={assistantSyncing}
+        assistantUseTestImportSource={assistantUseTestImportSource}
         onConfigure={onConfigure}
+        onAssistantJsonSync={onAssistantJsonSync}
         onAssistantSync={onAssistantSync}
         onOpenDirectory={onOpenDirectory}
         onPromoteStandardSync={onPromoteStandardSync}
@@ -553,7 +621,12 @@ function PlatformCard({
         <div className="platform-card__content">
           <div className="platform-card__title-row">
             <h3>{platform.name}</h3>
-            {needsLogin ? <span className="status-label status-label--warning"><i />需验证</span> : null}
+            {needsLogin ? (
+              <span className="status-label status-label--warning">
+                <i />
+                需验证
+              </span>
+            ) : null}
           </div>
           <span className="platform-card__meta">{platform.accountCount} 个账号</span>
         </div>
@@ -593,8 +666,11 @@ function PlatformCard({
 }
 
 function WeixinChannelsCard({
+  assistantJsonSyncing,
   assistantSyncing,
+  assistantUseTestImportSource,
   onConfigure,
+  onAssistantJsonSync,
   onAssistantSync,
   onOpenDirectory,
   onPromoteStandardSync,
@@ -602,15 +678,20 @@ function WeixinChannelsCard({
   promoteStandardAllowDuplicateProcessing,
   promoteStandardSyncing,
 }: {
-  assistantSyncing: boolean
-  onConfigure?: () => void
-  onAssistantSync?: () => void
-  onOpenDirectory?: () => void
-  onPromoteStandardSync?: () => void
-  platform: Platform
-  promoteStandardAllowDuplicateProcessing: boolean
-  promoteStandardSyncing: boolean
+  assistantJsonSyncing: boolean;
+  assistantSyncing: boolean;
+  assistantUseTestImportSource: boolean;
+  onConfigure?: () => void;
+  onAssistantJsonSync?: () => void;
+  onAssistantSync?: () => void;
+  onOpenDirectory?: () => void;
+  onPromoteStandardSync?: () => void;
+  platform: Platform;
+  promoteStandardAllowDuplicateProcessing: boolean;
+  promoteStandardSyncing: boolean;
 }) {
+  const assistantTaskRunning = assistantSyncing || assistantJsonSyncing;
+
   return (
     <article className="platform-card platform-card--featured">
       <div className="featured-platform__summary">
@@ -621,6 +702,11 @@ function WeixinChannelsCard({
             <div className="featured-platform__hint">
               {platform.accountCount} 个账号 · 任务启动后逐个登录 <ProcessTooltip />
             </div>
+            {assistantUseTestImportSource ? (
+              <div className="featured-platform__source-warning" role="status">
+                助手 Excel 导入统一使用“测试导入数据的来源”
+              </div>
+            ) : null}
             {promoteStandardAllowDuplicateProcessing ? (
               <div className="featured-platform__source-warning" role="status">
                 标准看板测试模式：允许重复处理同一账号
@@ -629,12 +715,36 @@ function WeixinChannelsCard({
           </div>
         </div>
         <div className="featured-platform__tools">
-          <Button aria-label="配置微信视频号" icon={<SettingOutlined />} onClick={onConfigure} type="text" />
-          <Button aria-label="打开微信视频号文件夹" icon={<FolderOpenOutlined />} onClick={onOpenDirectory} type="text" />
+          <Button
+            aria-label="配置微信视频号"
+            icon={<SettingOutlined />}
+            onClick={onConfigure}
+            type="text"
+          />
+          <Button
+            aria-label="打开微信视频号文件夹"
+            icon={<FolderOpenOutlined />}
+            onClick={onOpenDirectory}
+            type="text"
+          />
         </div>
         <div className="featured-platform__tasks">
-          <Button icon={<SyncOutlined />} disabled={assistantSyncing} loading={assistantSyncing} onClick={onAssistantSync} type="primary">
-            {assistantSyncing ? "处理中" : "助手数据"}
+          <Button
+            disabled={assistantTaskRunning}
+            icon={<DownloadOutlined />}
+            loading={assistantSyncing}
+            onClick={onAssistantSync}
+            type="primary"
+          >
+            {assistantSyncing ? "处理中" : "助手单条剧集 Excel 数据"}
+          </Button>
+          <Button
+            disabled={assistantTaskRunning}
+            icon={<DatabaseOutlined />}
+            loading={assistantJsonSyncing}
+            onClick={onAssistantJsonSync}
+          >
+            {assistantJsonSyncing ? "处理中" : "助手单条剧集表格数据"}
           </Button>
           {/* “加热明细”入口暂不对用户开放。
           <Button icon={<SyncOutlined />} disabled={promoteSyncing} loading={promoteSyncing} onClick={onPromoteSync}>
@@ -659,7 +769,7 @@ function ProcessTooltip() {
   return (
     <Tooltip
       placement="bottomLeft"
-      title="默认处理前一天的数据。开始后请按提示手动登录，系统会在每个账号登录后自动抓取完整数据、保存 JSON 并导入，再继续处理下一个账号。"
+      title="两个助手任务使用同一日期配置：Excel 会点击页面下载并走版权数据导入；JSON 会抓取完整统计接口响应并走剧集统计导入。开始后请按提示逐个扫码登录。"
     >
       <Button
         aria-label="查看微信视频号数据处理说明"
@@ -673,9 +783,9 @@ function ProcessTooltip() {
 }
 
 const datePresetOptions: Array<{
-  description: string
-  label: string
-  value: WeixinChannelsDatePreset
+  description: string;
+  label: string;
+  value: WeixinChannelsDatePreset;
 }> = [
   { value: "previous-day", label: "前一天", description: "默认，处理昨天的数据" },
   { value: "today", label: "当天", description: "处理今天截至当前的数据" },
@@ -691,10 +801,10 @@ function WeixinSettingsDrawer({
   open,
   settings,
 }: {
-  onOpenChange: (open: boolean) => void
-  onSave: (settings: WeixinChannelsSettings) => Promise<void>
-  open: boolean
-  settings: WeixinChannelsSettings
+  onOpenChange: (open: boolean) => void;
+  onSave: (settings: WeixinChannelsSettings) => Promise<void>;
+  open: boolean;
+  settings: WeixinChannelsSettings;
 }) {
   const [draft, setDraft] = useState(settings);
   const [configurationError, setConfigurationError] = useState<string>();
@@ -754,9 +864,7 @@ function WeixinSettingsDrawer({
       title={
         <div className="drawer-title">
           <div>微信视频号处理配置</div>
-          <p>
-            日期范围在每次任务启动时读取；留空下载位置则使用应用默认目录。
-          </p>
+          <p>日期范围在每次任务启动时读取；留空下载位置则使用应用默认目录。</p>
         </div>
       }
       onClose={() => onOpenChange(false)}
@@ -781,7 +889,7 @@ function WeixinSettingsDrawer({
               ...current,
               assistantCustomDateRange:
                 assistantDatePreset === "custom"
-                  ? current.assistantCustomDateRange ?? createDefaultCustomDateRange()
+                  ? (current.assistantCustomDateRange ?? createDefaultCustomDateRange())
                   : current.assistantCustomDateRange,
               assistantDatePreset,
             }));
@@ -802,7 +910,7 @@ function WeixinSettingsDrawer({
               ...current,
               promoteCustomDateRange:
                 promoteDatePreset === "custom"
-                  ? current.promoteCustomDateRange ?? createDefaultCustomDateRange()
+                  ? (current.promoteCustomDateRange ?? createDefaultCustomDateRange())
                   : current.promoteCustomDateRange,
               promoteDatePreset,
             }));
@@ -823,7 +931,7 @@ function WeixinSettingsDrawer({
               ...current,
               promoteStandardCustomDateRange:
                 promoteStandardDatePreset === "custom"
-                  ? current.promoteStandardCustomDateRange ?? createDefaultCustomDateRange()
+                  ? (current.promoteStandardCustomDateRange ?? createDefaultCustomDateRange())
                   : current.promoteStandardCustomDateRange,
               promoteStandardDatePreset,
             }));
@@ -833,6 +941,22 @@ function WeixinSettingsDrawer({
             setDraft((current) => ({ ...current, promoteStandardCustomDateRange }));
           }}
           value={draft.promoteStandardDatePreset}
+        />
+      </div>
+
+      <div className="import-source-setting">
+        <div className="import-source-setting__copy">
+          <label htmlFor="weixin-test-import-source">助手 Excel 导入使用测试数据来源</label>
+          <p>
+            开启后，所有账号下载的助手 Excel 都会导入到“测试导入数据的来源”，不再按登录账号名称匹配；助手 JSON 和标准看板不受影响。
+          </p>
+        </div>
+        <Switch
+          checked={draft.assistantUseTestImportSource}
+          id="weixin-test-import-source"
+          onChange={(assistantUseTestImportSource) =>
+            setDraft((current) => ({ ...current, assistantUseTestImportSource }))
+          }
         />
       </div>
 
@@ -881,7 +1005,12 @@ function WeixinSettingsDrawer({
           ) : null}
         </div>
         {directoryError ? (
-          <Alert className="directory-setting__error" message={directoryError} showIcon type="error" />
+          <Alert
+            className="directory-setting__error"
+            message={directoryError}
+            showIcon
+            type="error"
+          />
         ) : null}
       </div>
     </Drawer>
@@ -894,10 +1023,10 @@ function KuaishouSettingsDrawer({
   open,
   settings,
 }: {
-  onOpenChange: (open: boolean) => void
-  onSave: (settings: KuaishouSettings) => Promise<void>
-  open: boolean
-  settings: KuaishouSettings
+  onOpenChange: (open: boolean) => void;
+  onSave: (settings: KuaishouSettings) => Promise<void>;
+  open: boolean;
+  settings: KuaishouSettings;
 }) {
   const [draft, setDraft] = useState(settings);
   const [configurationError, setConfigurationError] = useState<string>();
@@ -982,7 +1111,7 @@ function KuaishouSettingsDrawer({
               ...current,
               customDateRange:
                 datePreset === "custom"
-                  ? current.customDateRange ?? createDefaultCustomDateRange()
+                  ? (current.customDateRange ?? createDefaultCustomDateRange())
                   : current.customDateRange,
               datePreset,
             }));
@@ -1019,7 +1148,12 @@ function KuaishouSettingsDrawer({
           ) : null}
         </div>
         {directoryError ? (
-          <Alert className="directory-setting__error" message={directoryError} showIcon type="error" />
+          <Alert
+            className="directory-setting__error"
+            message={directoryError}
+            showIcon
+            type="error"
+          />
         ) : null}
       </div>
     </Drawer>
@@ -1034,12 +1168,12 @@ function DatePresetFieldset({
   onCustomRangeChange,
   value,
 }: {
-  customRange?: WeixinChannelsCustomDateRange
-  label: string
-  name: string
-  onChange: (value: WeixinChannelsDatePreset) => void
-  onCustomRangeChange: (value: WeixinChannelsCustomDateRange) => void
-  value: WeixinChannelsDatePreset
+  customRange?: WeixinChannelsCustomDateRange;
+  label: string;
+  name: string;
+  onChange: (value: WeixinChannelsDatePreset) => void;
+  onCustomRangeChange: (value: WeixinChannelsCustomDateRange) => void;
+  value: WeixinChannelsDatePreset;
 }) {
   return (
     <fieldset className="preset-fieldset">
@@ -1064,10 +1198,7 @@ function DatePresetFieldset({
                   allowClear={false}
                   format="YYYY-MM-DD"
                   maxDate={dayjs()}
-                  value={[
-                    dayjs(customRange.startDate),
-                    dayjs(customRange.endDate),
-                  ]}
+                  value={[dayjs(customRange.startDate), dayjs(customRange.endDate)]}
                   className="preset-custom-range__picker"
                   onChange={(dates) => {
                     if (!dates?.[0] || !dates[1]) {
@@ -1090,7 +1221,11 @@ function DatePresetFieldset({
 
 function PlatformLogo({ platform }: { platform: Platform }) {
   if (platform.logo) {
-    return <span className="platform-logo"><img src={platform.logo} alt="" /></span>;
+    return (
+      <span className="platform-logo">
+        <img src={platform.logo} alt="" />
+      </span>
+    );
   }
 
   return (
@@ -1120,7 +1255,9 @@ function ImportTable({ records }: { records: ImportRecord[] }) {
       width: 160,
       render: (taskName: string, record) => (
         <div className="min-w-0">
-          <span className="block truncate" title={record.detail ?? record.taskType}>{taskName}</span>
+          <span className="block truncate" title={record.detail ?? record.taskType}>
+            {taskName}
+          </span>
           {record.detail ? (
             <span className="block truncate text-[11px] text-red-600" title={record.detail}>
               {record.detail}
@@ -1138,7 +1275,10 @@ function ImportTable({ records }: { records: ImportRecord[] }) {
         <div className="min-w-0">
           <span className="block truncate">{account}</span>
           {record.uniqId ? (
-            <span className="block truncate font-mono text-[11px] text-slate-500" title={record.uniqId}>
+            <span
+              className="block truncate font-mono text-[11px] text-slate-500"
+              title={record.uniqId}
+            >
               {record.uniqId}
             </span>
           ) : null}
@@ -1156,14 +1296,18 @@ function ImportTable({ records }: { records: ImportRecord[] }) {
       dataIndex: "success",
       title: "成功",
       width: 72,
-      render: (value: ImportRecord["success"]) => <span className="font-medium text-emerald-600">{value}</span>,
+      render: (value: ImportRecord["success"]) => (
+        <span className="font-medium text-emerald-600">{value}</span>
+      ),
     },
     {
       align: "center",
       dataIndex: "failed",
       title: "失败",
       width: 72,
-      render: (value: ImportRecord["failed"]) => <span className="font-medium text-red-600">{value}</span>,
+      render: (value: ImportRecord["failed"]) => (
+        <span className="font-medium text-red-600">{value}</span>
+      ),
     },
     {
       dataIndex: "status",
@@ -1228,10 +1372,13 @@ function StatusBadge({ status }: { status: ImportStatus }) {
     partial: { label: "部分失败", badgeStatus: "warning" },
     failed: { label: "失败", badgeStatus: "error" },
     pending: { label: "待接入", badgeStatus: "default" },
-  } satisfies Record<ImportStatus, {
-    badgeStatus: "default" | "error" | "success" | "warning"
-    label: string
-  }>;
+  } satisfies Record<
+    ImportStatus,
+    {
+      badgeStatus: "default" | "error" | "success" | "warning";
+      label: string;
+    }
+  >;
 
   const item = statusMap[status];
 
@@ -1243,9 +1390,9 @@ function Footer({
   statusText,
   updateState,
 }: {
-  onOpenUpdater: () => void
-  statusText: string
-  updateState: UpdateState
+  onOpenUpdater: () => void;
+  statusText: string;
+  updateState: UpdateState;
 }) {
   const updateAvailable = updateState.phase === "available" || updateState.phase === "downloaded";
 
@@ -1258,13 +1405,16 @@ function Footer({
             {statusText}
           </span>
           <Button
-            className={updateAvailable ? "version-button version-button--available" : "version-button"}
+            className={
+              updateAvailable ? "version-button version-button--available" : "version-button"
+            }
             icon={updateAvailable ? <DownloadOutlined /> : undefined}
             onClick={onOpenUpdater}
             size="small"
             type="text"
           >
-            v{updateState.currentVersion}{updateAvailable ? " · 有新版本" : " · 检查更新"}
+            v{updateState.currentVersion}
+            {updateAvailable ? " · 有新版本" : " · 检查更新"}
           </Button>
         </div>
         <span>数据更新时间：2025-05-20 10:23:50</span>
@@ -1280,11 +1430,11 @@ function UpdateDrawer({
   sources,
   state,
 }: {
-  onOpenChange: (open: boolean) => void
-  onStateChange: (state: UpdateState) => void
-  open: boolean
-  sources: UpdateSource[]
-  state: UpdateState
+  onOpenChange: (open: boolean) => void;
+  onStateChange: (state: UpdateState) => void;
+  open: boolean;
+  sources: UpdateSource[];
+  state: UpdateState;
 }) {
   const busy = state.phase === "checking" || state.phase === "downloading";
   const selectedSource = sources.find((source) => source.id === state.selectedSourceId);
@@ -1321,15 +1471,16 @@ function UpdateDrawer({
     void run(() => window.desktop.updater.check());
   }
 
-  const actionLabel = state.phase === "available"
-    ? "下载新版本"
-    : state.phase === "downloaded"
-      ? "立即重启安装"
-      : state.phase === "checking"
-        ? "正在检查"
-        : state.phase === "downloading"
-          ? `正在下载 ${state.progress}%`
-          : "检查更新";
+  const actionLabel =
+    state.phase === "available"
+      ? "下载新版本"
+      : state.phase === "downloaded"
+        ? "立即重启安装"
+        : state.phase === "checking"
+          ? "正在检查"
+          : state.phase === "downloading"
+            ? `正在下载 ${state.progress}%`
+            : "检查更新";
 
   return (
     <Drawer
@@ -1371,9 +1522,13 @@ function UpdateDrawer({
         <Button
           block
           disabled={state.phase === "unsupported"}
-          icon={state.phase === "available" || state.phase === "downloaded"
-            ? <DownloadOutlined />
-            : <ReloadOutlined />}
+          icon={
+            state.phase === "available" || state.phase === "downloaded" ? (
+              <DownloadOutlined />
+            ) : (
+              <ReloadOutlined />
+            )
+          }
           loading={busy}
           onClick={primaryAction}
           size="large"
@@ -1400,18 +1555,23 @@ function UpdateDrawer({
 }
 
 function createImportRecordFromEvent(event: WeixinChannelsSyncEvent): ImportRecord {
+  const isAssistantJsonEvent = event.mode === "assistant-json";
   const isPromoteEvent = event.mode === "promote";
   const isPromoteStandardEvent = event.mode === "promote-standard";
   const fallbackTaskName = isPromoteStandardEvent
     ? "加热平台 · 标准看板数据处理"
     : isPromoteEvent
       ? "加热平台 · 数据明细处理"
-      : "助手 · 剧集数据处理";
+      : isAssistantJsonEvent
+        ? "助手 · JSON 抓取导入"
+        : "助手 · Excel 下载导入";
   const fallbackTaskType = isPromoteStandardEvent
     ? "weixin-channels-promote-standard-analysis"
     : isPromoteEvent
       ? "weixin-channels-promote-statistic"
-      : "weixin-channels-playlet-statistic";
+      : isAssistantJsonEvent
+        ? "weixin-channels-playlet-statistic-json"
+        : "weixin-channels-playlet-statistic";
 
   if (event.type === "account-failed") {
     return {
@@ -1557,14 +1717,20 @@ function createMeituanImportRecord(event: MeituanSyncEvent): ImportRecord {
 }
 
 function extractImportCounts(result: unknown): {
-  failed?: number
-  success?: number
-  total?: number
+  failed?: number;
+  success?: number;
+  total?: number;
 } {
   const data = isRecord(result) && isRecord(result.data) ? result.data : result;
   const receivedCount = findNumericValue(data, ["receivedCount"]);
   const savedCount = findNumericValue(data, ["savedCount"]);
-  const explicitFailed = findNumericValue(data, ["failed", "fail", "failCount", "failureCount", "errorCount"]);
+  const explicitFailed = findNumericValue(data, [
+    "failed",
+    "fail",
+    "failCount",
+    "failureCount",
+    "errorCount",
+  ]);
 
   return {
     failed:
@@ -1572,7 +1738,13 @@ function extractImportCounts(result: unknown): {
       (receivedCount !== undefined && savedCount !== undefined
         ? Math.max(0, receivedCount - savedCount)
         : undefined),
-    success: findNumericValue(data, ["success", "successCount", "imported", "importedCount", "savedCount"]),
+    success: findNumericValue(data, [
+      "success",
+      "successCount",
+      "imported",
+      "importedCount",
+      "savedCount",
+    ]),
     total: findNumericValue(data, ["total", "totalCount", "count", "rowCount", "receivedCount"]),
   };
 }
@@ -1616,9 +1788,9 @@ function createDefaultCustomDateRange(): WeixinChannelsCustomDateRange {
 
 function validateWeixinSettings(settings: WeixinChannelsSettings): string | undefined {
   const selections: Array<{
-    label: string
-    preset: WeixinChannelsDatePreset
-    range?: WeixinChannelsCustomDateRange
+    label: string;
+    preset: WeixinChannelsDatePreset;
+    range?: WeixinChannelsCustomDateRange;
   }> = [
     {
       label: "助手 · 剧集数据",
@@ -1705,9 +1877,7 @@ function loadImportRecords(): ImportRecord[] {
     }
 
     const records = JSON.parse(rawRecords);
-    return Array.isArray(records)
-      ? records.map(normalizeImportRecord).slice(0, 50)
-      : [];
+    return Array.isArray(records) ? records.map(normalizeImportRecord).slice(0, 50) : [];
   } catch {
     return [];
   }
@@ -1724,14 +1894,18 @@ function normalizeImportRecord(record: unknown): ImportRecord {
     account: typeof rawRecord.account === "string" ? rawRecord.account : "微信视频号账号",
     dataPeriod: typeof rawRecord.dataPeriod === "string" ? rawRecord.dataPeriod : undefined,
     detail: typeof rawRecord.detail === "string" ? rawRecord.detail : undefined,
-    failed: typeof rawRecord.failed === "number" || typeof rawRecord.failed === "string" ? rawRecord.failed : "-",
+    failed:
+      typeof rawRecord.failed === "number" || typeof rawRecord.failed === "string"
+        ? rawRecord.failed
+        : "-",
     platform: typeof rawRecord.platform === "string" ? rawRecord.platform : "微信视频号",
     platformLogo:
       typeof rawRecord.platformLogo === "string"
         ? normalizePlatformLogoUrl(rawRecord.platformLogo)
         : platformLogoUrl("wx.svg"),
     sourceId: typeof rawRecord.sourceId === "number" ? rawRecord.sourceId : undefined,
-    startedAt: typeof rawRecord.startedAt === "string" ? rawRecord.startedAt : formatDateTime(new Date()),
+    startedAt:
+      typeof rawRecord.startedAt === "string" ? rawRecord.startedAt : formatDateTime(new Date()),
     status:
       rawRecord.status === "partial" ||
       rawRecord.status === "failed" ||
@@ -1739,13 +1913,19 @@ function normalizeImportRecord(record: unknown): ImportRecord {
       rawRecord.status === "success"
         ? rawRecord.status
         : "success",
-    success: typeof rawRecord.success === "number" || typeof rawRecord.success === "string" ? rawRecord.success : "-",
+    success:
+      typeof rawRecord.success === "number" || typeof rawRecord.success === "string"
+        ? rawRecord.success
+        : "-",
     taskName: typeof rawRecord.taskName === "string" ? rawRecord.taskName : "助手 · 剧集数据处理",
     taskType:
       typeof rawRecord.taskType === "string"
         ? rawRecord.taskType
         : "weixin-channels-playlet-statistic",
-    total: typeof rawRecord.total === "number" || typeof rawRecord.total === "string" ? rawRecord.total : "-",
+    total:
+      typeof rawRecord.total === "number" || typeof rawRecord.total === "string"
+        ? rawRecord.total
+        : "-",
     uniqId: typeof rawRecord.uniqId === "string" ? rawRecord.uniqId : undefined,
   };
 }

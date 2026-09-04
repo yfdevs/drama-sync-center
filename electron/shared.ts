@@ -26,7 +26,11 @@ export interface UpdateState {
   sourceId?: string
   sourceName?: string
 }
-export type WeixinChannelsSyncMode = 'assistant' | 'promote' | 'promote-standard'
+export type WeixinChannelsSyncMode =
+  | 'assistant'
+  | 'assistant-json'
+  | 'promote'
+  | 'promote-standard'
 export type WeixinChannelsDatePreset =
   | 'previous-day'
   | 'today'
@@ -53,6 +57,7 @@ export interface KuaishouSettings {
 export interface WeixinChannelsSettings {
   assistantCustomDateRange?: WeixinChannelsCustomDateRange
   assistantDatePreset: WeixinChannelsDatePreset
+  assistantUseTestImportSource: boolean
   downloadDirectory?: string
   promoteStandardAllowDuplicateProcessing: boolean
   promoteStandardCustomDateRange?: WeixinChannelsCustomDateRange

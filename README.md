@@ -42,7 +42,7 @@ pnpm --filter @drama-sync/daren-center-automation run login
 - `@drama-sync/platform-qq-short-drama`
 - `@drama-sync/platform-tiktok-drama`
 
-微信视频号卡片当前提供“助手数据”和“标准看板”两项处理任务，“加热明细”入口暂时隐藏。“助手数据”进入剧集统计页，捕获 `get-finder-native-drama-statistics-list` 请求及响应，按响应中的 `totalCount` 重新请求全部记录，将完整响应保存为 JSON，并把响应内层的 `{ list, baseResp, totalCount }` 免鉴权提交到 `/api/b/wechat-drama/statistics/ingest`。最近处理记录的“总条数”按 `list 条数 / totalCount` 展示。“标准看板”进入加热平台的“标准数据分析-账户标准看板”，默认读取昨天的数据，自动配置数据明细维度（订单/计划、按天、短剧、加热对象、视频、作者、出价方式、订单类型、创建人）和指标（消耗金额、短剧广告变现金额、短剧广告变现 ROI、播放数），等待 CSV 下载完成后存档，并复用加热明细的 `/api/b/drama-heating/actions/import` 接口完成导入。
+微信视频号卡片当前提供“助手 Excel”“助手 JSON”和“标准看板”三项处理任务，“加热明细”入口暂时隐藏。“助手 Excel”进入剧集统计页，点击页面的“下载数据”获取 Excel 文件，保存后按登录账号匹配数据来源并提交版权数据导入。“助手 JSON”捕获 `get-finder-native-drama-statistics-list` 请求及响应，按响应中的 `totalCount` 重新请求全部记录，将完整响应保存为 JSON，并把响应内层的 `{ list, baseResp, totalCount }` 免鉴权提交到 `/api/b/wechat-drama/statistics/ingest`。两个助手任务共用助手日期配置；最近处理记录中的任务名称会区分 Excel 与 JSON，JSON 的“总条数”按 `list 条数 / totalCount` 展示。“标准看板”进入加热平台的“标准数据分析-账户标准看板”，默认读取昨天的数据，自动配置数据明细维度（订单/计划、按天、短剧、加热对象、视频、作者、出价方式、订单类型、创建人）和指标（消耗金额、短剧广告变现金额、短剧广告变现 ROI、播放数），等待 CSV 下载完成后存档，并复用加热明细的 `/api/b/drama-heating/actions/import` 接口完成导入。
 
 标准看板默认会阻止同一次任务重复处理相同视频号。测试时可在微信视频号配置中开启“标准看板允许重复处理（仅测试）”；开关开启期间平台卡片会显示测试模式提示，关闭后恢复正常去重保护。
 

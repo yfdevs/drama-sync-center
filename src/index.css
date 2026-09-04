@@ -759,9 +759,18 @@ textarea {
   }
 
   .platform-grid,
-  .settings-grid,
-  .featured-platform__tasks {
+  .settings-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .featured-platform__tasks {
+    display: grid;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .featured-platform__tasks .ant-btn {
+    width: 100%;
   }
 
   .platform-card--featured {
