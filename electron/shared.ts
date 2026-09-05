@@ -59,7 +59,6 @@ export interface WeixinChannelsSettings {
   assistantDatePreset: WeixinChannelsDatePreset
   assistantUseTestImportSource: boolean
   downloadDirectory?: string
-  promoteStandardAllowDuplicateProcessing: boolean
   promoteStandardCustomDateRange?: WeixinChannelsCustomDateRange
   promoteStandardDatePreset: WeixinChannelsDatePreset
   promoteCustomDateRange?: WeixinChannelsCustomDateRange

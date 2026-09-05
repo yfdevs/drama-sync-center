@@ -426,19 +426,31 @@ textarea {
 }
 
 .update-summary {
-  padding: 24px;
+  padding: 24px 24px 28px;
 }
 
 .update-version-row {
   display: flex;
-  gap: 40px;
+  align-items: center;
+  gap: 16px;
+  min-height: 56px;
 }
 
-.update-version-row > div {
+.update-version-item {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 3px;
+}
+
+.update-version-item--latest strong {
+  color: var(--brand);
+}
+
+.update-version-arrow {
+  margin-top: 20px;
+  color: var(--faint);
+  font-size: 11px;
 }
 
 .update-field-label {
@@ -457,15 +469,15 @@ textarea {
 
 .update-status {
   display: flex;
-  min-height: 42px;
-  align-items: center;
-  gap: 9px;
-  margin: 20px 0 16px;
+  min-height: 68px;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 22px 0 18px;
   border-radius: 8px;
   background: var(--surface-subtle);
   color: var(--body);
-  padding: 10px 12px;
-  font-size: 12px;
+  padding: 12px 14px;
+  font-size: 13px;
   line-height: 20px;
 }
 
@@ -473,8 +485,27 @@ textarea {
   width: 7px;
   height: 7px;
   flex: none;
+  margin-top: 7px;
   border-radius: 50%;
   background: var(--faint);
+}
+
+.update-status__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.update-status__copy strong {
+  color: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.update-status__copy > span {
+  color: var(--body);
+  font-size: 12px;
 }
 
 .update-status--available,
@@ -513,26 +544,46 @@ textarea {
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--line);
-  padding: 20px 24px 24px;
+  background: var(--surface-subtle);
+  padding: 22px 24px 24px;
+}
+
+.update-source-setting__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 18px;
+}
+
+.update-source-setting__heading strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 20px;
+}
+
+.update-source-setting__heading span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .update-source-setting > label {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   color: var(--ink);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 550;
 }
 
-.update-source-setting p,
-.update-source-setting > span {
+.update-source-setting p {
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 18px;
 }
 
 .update-source-setting p {
-  margin-top: 10px;
+  margin-top: 8px;
   color: var(--body);
 }
 

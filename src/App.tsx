@@ -17,6 +17,7 @@ import {
   DownloadOutlined,
   FolderOpenOutlined,
   InfoCircleOutlined,
+  RightOutlined,
   ReloadOutlined,
   SettingOutlined,
   SyncOutlined,
@@ -142,7 +143,6 @@ const importRecordsStorageKey = "drama-sync-center:import-records";
 const defaultWeixinSettings: WeixinChannelsSettings = {
   assistantDatePreset: "previous-day",
   assistantUseTestImportSource: false,
-  promoteStandardAllowDuplicateProcessing: false,
   promoteStandardDatePreset: "previous-day",
   promoteDatePreset: "previous-day",
 };
@@ -463,9 +463,6 @@ function App() {
                   promoteStandardSyncing={
                     platform.id === "wx" && weixinSyncRunning["promote-standard"]
                   }
-                  promoteStandardAllowDuplicateProcessing={
-                    platform.id === "wx" && weixinSettings.promoteStandardAllowDuplicateProcessing
-                  }
                   syncing={
                     (platform.id === "meituan" && meituanSyncRunning) ||
                     (platform.id === "kuaishou" && kuaishouSyncRunning)
@@ -575,7 +572,6 @@ function PlatformCard({
   onOpenDirectory,
   onPromoteStandardSync,
   platform,
-  promoteStandardAllowDuplicateProcessing = false,
   promoteStandardSyncing = false,
   syncing = false,
 }: {
@@ -588,7 +584,6 @@ function PlatformCard({
   onOpenDirectory?: () => void;
   onPromoteStandardSync?: () => void;
   platform: Platform;
-  promoteStandardAllowDuplicateProcessing?: boolean;
   promoteStandardSyncing?: boolean;
   syncing?: boolean;
 }) {
@@ -608,7 +603,6 @@ function PlatformCard({
         onOpenDirectory={onOpenDirectory}
         onPromoteStandardSync={onPromoteStandardSync}
         platform={platform}
-        promoteStandardAllowDuplicateProcessing={promoteStandardAllowDuplicateProcessing}
         promoteStandardSyncing={promoteStandardSyncing}
       />
     );
@@ -675,7 +669,6 @@ function WeixinChannelsCard({
   onOpenDirectory,
   onPromoteStandardSync,
   platform,
-  promoteStandardAllowDuplicateProcessing,
   promoteStandardSyncing,
 }: {
   assistantJsonSyncing: boolean;
@@ -687,7 +680,6 @@ function WeixinChannelsCard({
   onOpenDirectory?: () => void;
   onPromoteStandardSync?: () => void;
   platform: Platform;
-  promoteStandardAllowDuplicateProcessing: boolean;
   promoteStandardSyncing: boolean;
 }) {
   const assistantTaskRunning = assistantSyncing || assistantJsonSyncing;
@@ -705,11 +697,6 @@ function WeixinChannelsCard({
             {assistantUseTestImportSource ? (
               <div className="featured-platform__source-warning" role="status">
                 助手 Excel 导入统一使用“测试导入数据的来源”
-              </div>
-            ) : null}
-            {promoteStandardAllowDuplicateProcessing ? (
-              <div className="featured-platform__source-warning" role="status">
-                标准看板测试模式：允许重复处理同一账号
               </div>
             ) : null}
           </div>
@@ -948,7 +935,8 @@ function WeixinSettingsDrawer({
         <div className="import-source-setting__copy">
           <label htmlFor="weixin-test-import-source">助手 Excel 导入使用测试数据来源</label>
           <p>
-            开启后，所有账号下载的助手 Excel 都会导入到“测试导入数据的来源”，不再按登录账号名称匹配；助手 JSON 和标准看板不受影响。
+            开启后，所有账号下载的助手 Excel
+            都会导入到“测试导入数据的来源”，不再按登录账号名称匹配；助手 JSON 和标准看板不受影响。
           </p>
         </div>
         <Switch
@@ -956,27 +944,6 @@ function WeixinSettingsDrawer({
           id="weixin-test-import-source"
           onChange={(assistantUseTestImportSource) =>
             setDraft((current) => ({ ...current, assistantUseTestImportSource }))
-          }
-        />
-      </div>
-
-      <div className="import-source-setting">
-        <div className="import-source-setting__copy">
-          <label htmlFor="weixin-promote-standard-allow-duplicate">
-            标准看板允许重复处理（仅测试）
-          </label>
-          <p>
-            开启后，同一次任务中可重复登录并处理同一个视频号。默认关闭，避免重复下载和后续重复导入。
-          </p>
-        </div>
-        <Switch
-          checked={draft.promoteStandardAllowDuplicateProcessing}
-          id="weixin-promote-standard-allow-duplicate"
-          onChange={(promoteStandardAllowDuplicateProcessing) =>
-            setDraft((current) => ({
-              ...current,
-              promoteStandardAllowDuplicateProcessing,
-            }))
           }
         />
       </div>
@@ -1443,9 +1410,10 @@ function UpdateDrawer({
     try {
       onStateChange(await action());
     } catch (error) {
+      window.desktop?.log.error("Update action failed", getErrorMessage(error));
       onStateChange({
         ...state,
-        message: `更新操作失败：${getErrorMessage(error)}`,
+        message: "操作没有完成，请检查网络后重试。",
         phase: "error",
         progress: 0,
       });
@@ -1475,12 +1443,59 @@ function UpdateDrawer({
     state.phase === "available"
       ? "下载新版本"
       : state.phase === "downloaded"
-        ? "立即重启安装"
+        ? "重启并完成安装"
         : state.phase === "checking"
-          ? "正在检查"
+          ? "正在检查…"
           : state.phase === "downloading"
             ? `正在下载 ${state.progress}%`
-            : "检查更新";
+            : state.phase === "error"
+              ? "重新检查"
+              : "检查新版本";
+
+  const statusCopy = (() => {
+    switch (state.phase) {
+      case "available":
+        return {
+          description: "建议更新。下载时可以继续使用，下载完成后再重启安装。",
+          title: `发现新版本 v${state.availableVersion ?? ""}`.trim(),
+        };
+      case "checking":
+        return {
+          description: "请稍等，通常只需几秒。",
+          title: "正在检查新版本",
+        };
+      case "downloaded":
+        return {
+          description: "点击下方按钮后，应用会关闭并自动完成安装。",
+          title: "新版本已准备好",
+        };
+      case "downloading":
+        return {
+          description: "下载期间可以继续使用。完成后，我们会提醒你重启安装。",
+          title: `正在下载新版本，已完成 ${state.progress}%`,
+        };
+      case "error":
+        return {
+          description: "请检查网络后重试。如果还是不行，可以在下方更换下载线路。",
+          title: "暂时无法检查更新",
+        };
+      case "unsupported":
+        return {
+          description: "请打开安装后的正式版，再回来检查新版本。",
+          title: "当前无法检查更新",
+        };
+      case "up-to-date":
+        return {
+          description: "暂时不用做任何操作，可以继续使用。",
+          title: "已经是最新版",
+        };
+      default:
+        return {
+          description: "检查只需片刻，不会打断当前操作。",
+          title: "看看有没有新版本",
+        };
+    }
+  })();
 
   return (
     <Drawer
@@ -1489,30 +1504,36 @@ function UpdateDrawer({
       placement="right"
       title={
         <div className="drawer-title">
-          <div>版本更新</div>
-          <p>检查 GitHub Releases，并在连接失败时自动尝试其他线路。</p>
+          <div>软件更新</div>
         </div>
       }
       onClose={() => onOpenChange(false)}
       styles={{ body: { padding: 0 } }}
+      width={420}
     >
       <div className="update-summary">
         <div className="update-version-row">
-          <div>
-            <span className="update-field-label">当前版本</span>
+          <div className="update-version-item">
+            <span className="update-field-label">正在使用</span>
             <strong>v{state.currentVersion}</strong>
           </div>
           {state.availableVersion ? (
-            <div>
-              <span className="update-field-label">最新版本</span>
-              <strong>v{state.availableVersion}</strong>
-            </div>
+            <>
+              <RightOutlined className="update-version-arrow" aria-hidden />
+              <div className="update-version-item update-version-item--latest">
+                <span className="update-field-label">可以更新到</span>
+                <strong>v{state.availableVersion}</strong>
+              </div>
+            </>
           ) : null}
         </div>
 
         <div className={`update-status update-status--${state.phase}`} role="status">
           <span className="update-status__dot" />
-          <span>{state.message}</span>
+          <span className="update-status__copy">
+            <strong>{statusCopy.title}</strong>
+            <span>{statusCopy.description}</span>
+          </span>
         </div>
 
         {state.phase === "downloading" ? (
@@ -1539,7 +1560,11 @@ function UpdateDrawer({
       </div>
 
       <div className="update-source-setting">
-        <label htmlFor="update-source">下载线路</label>
+        <div className="update-source-setting__heading">
+          <strong>下载不顺畅时</strong>
+          <span>一般不用修改，应用会自动尝试可用线路。</span>
+        </div>
+        <label htmlFor="update-source">优先使用的下载线路</label>
         <Select
           id="update-source"
           disabled={busy}
@@ -1547,8 +1572,7 @@ function UpdateDrawer({
           options={sources.map((source) => ({ label: source.name, value: source.id }))}
           value={state.selectedSourceId}
         />
-        <p>{selectedSource?.description ?? "选择优先使用的下载线路。"}</p>
-        <span>当前线路不可用时，应用会自动尝试其余线路。</span>
+        <p>{selectedSource?.description ?? "选择一个下载线路。"}</p>
       </div>
     </Drawer>
   );

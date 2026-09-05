@@ -120,7 +120,6 @@ const activeJobs = new Map<WeixinChannelsSyncMode, ActiveWeixinSyncJob>();
 const defaultSettings: WeixinChannelsSettings = {
   assistantDatePreset: "previous-day",
   assistantUseTestImportSource: false,
-  promoteStandardAllowDuplicateProcessing: false,
   promoteStandardDatePreset: "previous-day",
   promoteDatePreset: "previous-day",
 };
@@ -172,8 +171,6 @@ function normalizeWeixinChannelsSettings(value: unknown): WeixinChannelsSettings
     assistantDatePreset: normalizeDatePreset(raw.assistantDatePreset),
     assistantUseTestImportSource: raw.assistantUseTestImportSource === true,
     downloadDirectory,
-    promoteStandardAllowDuplicateProcessing:
-      raw.promoteStandardAllowDuplicateProcessing === true,
     promoteStandardCustomDateRange: normalizeCustomDateRange(raw.promoteStandardCustomDateRange),
     promoteStandardDatePreset: normalizeDatePreset(raw.promoteStandardDatePreset),
     promoteCustomDateRange: normalizeCustomDateRange(raw.promoteCustomDateRange),
@@ -770,12 +767,7 @@ async function runWeixinPromoteDataAnalysisSyncLoop(
       const targetDate = dateRange.label;
 
       const isDuplicateAccount = Boolean(uniqId && processedUniqIds.has(uniqId));
-      const allowDuplicateProcessing = getWeixinChannelsSettings()
-        .promoteStandardAllowDuplicateProcessing;
-      if (
-        !uniqId ||
-        (isDuplicateAccount && !allowDuplicateProcessing)
-      ) {
+      if (!uniqId || isDuplicateAccount) {
         const failureReason = !uniqId
           ? "未获取到视频号 uniqId，为避免重复处理已跳过"
           : "本次任务已处理过该视频号，已跳过重复下载";

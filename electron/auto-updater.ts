@@ -10,21 +10,21 @@ const GITHUB_RELEASE_BASE =
 
 const DEFAULT_UPDATE_SOURCES: UpdateSource[] = [
   {
-    description: '速度取决于当前网络，始终优先验证官方发布文件。',
+    description: '优先使用官方提供的下载地址。',
     id: 'github',
-    name: 'GitHub 官方源',
+    name: '默认线路（推荐）',
     url: GITHUB_RELEASE_BASE,
   },
   {
-    description: '国内网络备用线路，官方源不可用时可选择。',
+    description: '默认线路较慢或连接不上时，可以尝试这条线路。',
     id: 'gh-proxy',
-    name: '镜像 · gh-proxy.com',
+    name: '备用线路 1',
     url: `https://gh-proxy.com/${GITHUB_RELEASE_BASE}`,
   },
   {
-    description: '第二备用线路，前两个源连接失败时使用。',
+    description: '前两条线路都无法下载时，可以尝试这条线路。',
     id: 'gh-3w',
-    name: '镜像 · gh.3w.pm',
+    name: '备用线路 2',
     url: `https://gh.3w.pm/${GITHUB_RELEASE_BASE}`,
   },
 ]
@@ -63,7 +63,7 @@ function selectedSourceId(): string {
 
 let state: UpdateState = {
   currentVersion: app.getVersion(),
-  message: app.isPackaged ? '尚未检查更新' : '开发环境不检查更新',
+  message: app.isPackaged ? '还没有检查新版本' : '当前无法检查更新',
   phase: app.isPackaged ? 'idle' : 'unsupported',
   progress: 0,
   selectedSourceId: selectedSourceId(),
@@ -89,7 +89,7 @@ function updateState(patch: Partial<UpdateState>): UpdateState {
 async function runUpdateOperation(download: boolean): Promise<UpdateState> {
   if (!app.isPackaged) {
     return updateState({
-      message: '开发环境不检查更新，请安装正式版本后使用。',
+      message: '请使用安装后的正式版检查更新。',
       phase: 'unsupported',
     })
   }
@@ -98,7 +98,7 @@ async function runUpdateOperation(download: boolean): Promise<UpdateState> {
   for (const source of sourcesInFallbackOrder()) {
     try {
       updateState({
-        message: download ? `正在连接 ${source.name}` : `正在通过 ${source.name} 检查`,
+        message: download ? `正在连接${source.name}` : `正在通过${source.name}检查`,
         phase: download ? 'downloading' : 'checking',
         progress: 0,
         sourceId: source.id,
@@ -112,7 +112,7 @@ async function runUpdateOperation(download: boolean): Promise<UpdateState> {
         logger.info('Application is up to date', { source: source.name })
         return updateState({
           availableVersion: undefined,
-          message: '当前已是最新版本',
+          message: '已经是最新版',
           phase: 'up-to-date',
           progress: 0,
         })
@@ -121,7 +121,7 @@ async function runUpdateOperation(download: boolean): Promise<UpdateState> {
       if (!download) {
         return updateState({
           availableVersion: result.updateInfo.version,
-          message: `发现新版本 v${result.updateInfo.version}`,
+          message: `可以更新到 v${result.updateInfo.version}`,
           phase: 'available',
           progress: 0,
         })
@@ -129,12 +129,12 @@ async function runUpdateOperation(download: boolean): Promise<UpdateState> {
 
       updateState({
         availableVersion: result.updateInfo.version,
-        message: `正在下载 v${result.updateInfo.version}`,
+        message: `正在下载新版本 v${result.updateInfo.version}`,
         phase: 'downloading',
       })
       await autoUpdater.downloadUpdate()
       return updateState({
-        message: `v${result.updateInfo.version} 已下载，等待安装`,
+        message: `新版本 v${result.updateInfo.version} 已下载完成`,
         phase: 'downloaded',
         progress: 100,
       })
@@ -147,7 +147,7 @@ async function runUpdateOperation(download: boolean): Promise<UpdateState> {
 
   logger.error('All update sources failed', failures)
   return updateState({
-    message: '所有更新源均连接失败，请稍后重试或切换网络。',
+    message: '暂时无法连接下载服务，请检查网络后重试。',
     phase: 'error',
     progress: 0,
   })
@@ -189,7 +189,7 @@ export function setUpdateSource(sourceId: string): UpdateState {
   }
   storeService.set(UPDATE_SOURCE_STORE_KEY, sourceId)
   return updateState({
-    message: '更新源已切换，下次检查时生效。',
+    message: '下载线路已更换，下次检查时使用。',
     selectedSourceId: sourceId,
   })
 }
@@ -203,7 +203,7 @@ export function startAutoUpdater() {
   autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.on('download-progress', (progress) => {
     updateState({
-      message: `正在下载 v${state.availableVersion ?? ''}`.trim(),
+      message: `正在下载新版本 v${state.availableVersion ?? ''}`.trim(),
       phase: 'downloading',
       progress: Math.round(progress.percent),
     })
