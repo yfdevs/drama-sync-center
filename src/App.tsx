@@ -756,7 +756,7 @@ function ProcessTooltip() {
   return (
     <Tooltip
       placement="bottomLeft"
-      title="两个助手任务使用同一日期配置：Excel 会点击页面下载并走版权数据导入；JSON 会抓取完整统计接口响应并走剧集统计导入。开始后请按提示逐个扫码登录。"
+      title="两个助手任务使用同一日期配置：Excel 会点击页面下载并走版权数据导入；JSON 会将所选日期范围拆分到每天，逐日抓取并导入剧集统计。开始后请按提示逐个扫码登录。"
     >
       <Button
         aria-label="查看微信视频号数据处理说明"

@@ -425,7 +425,7 @@ void test('ingests the inner WeChat drama statistics payload without authenticat
   const statistics = {
     baseResp: { errcode: 0, errmsg: 'ok' },
     list: [{ dramaInfo: { dramaUuid: 'drama-1' } }],
-    statisticTime: '2026-09-01 - 2026-09-07',
+    statisticTime: '2026-09-07',
     totalCount: 1,
   }
 

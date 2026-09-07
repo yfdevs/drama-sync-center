@@ -262,6 +262,26 @@ function resolveDateRange(
   };
 }
 
+function splitDateRangeByDay(range: ResolvedDateRange): ResolvedDateRange[] {
+  const end = dayjs(range.endDate);
+  const dailyRanges: ResolvedDateRange[] = [];
+
+  for (
+    let current = dayjs(range.startDate);
+    current.valueOf() <= end.valueOf();
+    current = current.add(1, "day")
+  ) {
+    const date = current.format("YYYY-MM-DD");
+    dailyRanges.push({
+      endDate: date,
+      label: date,
+      startDate: date,
+    });
+  }
+
+  return dailyRanges;
+}
+
 export function startWeixinChannelsSync(
   options: StartWeixinChannelsSyncOptions,
   mode: WeixinChannelsSyncMode = "assistant",
@@ -504,36 +524,35 @@ async function runWeixinChannelsSyncLoop(
         targetDate,
         uniqId,
       });
-      let statisticResponse: Response;
-      try {
-        statisticResponse = await setPlayletStatisticDateRangeWithRetry(page, dateRange, signal);
-      } catch (error) {
-        if (signal.aborted) {
-          throw error;
+      if (mode === "assistant") {
+        try {
+          await setPlayletStatisticDateRangeWithRetry(page, dateRange, signal);
+        } catch (error) {
+          if (signal.aborted) {
+            throw error;
+          }
+
+          const failureReason = `目标日期数据加载失败：${error instanceof Error ? error.message : String(error)}`;
+          syncLogger.error("Failed to load target Weixin Channels statistic date", {
+            accountName,
+            error: failureReason,
+            targetDate,
+            uniqId,
+          });
+          options.sendEvent({
+            accountName,
+            failureReason,
+            message: `处理失败：${accountName}（${failureReason}）`,
+            ...task,
+            targetDate,
+            timestamp: new Date().toISOString(),
+            type: "account-failed",
+            uniqId,
+          });
+          await signOutAccount(page, options, { accountName, uniqId }, task);
+          continue;
         }
 
-        const failureReason = `目标日期数据加载失败：${error instanceof Error ? error.message : String(error)}`;
-        syncLogger.error("Failed to load target Weixin Channels statistic date", {
-          accountName,
-          error: failureReason,
-          targetDate,
-          uniqId,
-        });
-        options.sendEvent({
-          accountName,
-          failureReason,
-          message: `处理失败：${accountName}（${failureReason}）`,
-          ...task,
-          targetDate,
-          timestamp: new Date().toISOString(),
-          type: "account-failed",
-          uniqId,
-        });
-        await signOutAccount(page, options, { accountName, uniqId }, task);
-        continue;
-      }
-
-      if (mode === "assistant") {
         syncLogger.info("Starting Weixin Channels statistic Excel download", {
           accountName,
           targetDate,
@@ -606,82 +625,114 @@ async function runWeixinChannelsSyncLoop(
         continue;
       }
 
-      syncLogger.info("Fetching complete Weixin Channels drama statistics", {
-        accountName,
-        targetDate,
-        uniqId,
-      });
-      const statisticData = await fetchCompleteStatisticData(page, statisticResponse);
-      const savedFile = await saveStatisticJson(statisticData.body, {
-        accountName,
-        downloadDirectory,
-        targetDate,
-        uniqId,
-      });
+      for (const dailyRange of splitDateRangeByDay(dateRange)) {
+        const dailyTargetDate = dailyRange.label;
+        let statisticResponse: Response;
+        try {
+          statisticResponse = await setPlayletStatisticDateRangeWithRetry(page, dailyRange, signal);
+        } catch (error) {
+          if (signal.aborted) {
+            throw error;
+          }
 
-      syncLogger.info("Weixin Channels drama statistics JSON saved", {
-        accountName,
-        bytes: savedFile.bytes,
-        fetchedCount: statisticData.fetchedCount,
-        filePath: savedFile.filePath,
-        filename: savedFile.filename,
-        targetDate,
-        totalCount: statisticData.totalCount,
-        uniqId,
-      });
-      options.sendEvent({
-        accountName,
-        fetchedCount: statisticData.fetchedCount,
-        filePath: savedFile.filePath,
-        message: `抓取完成：${savedFile.filename}（${statisticData.totalCount} 条）`,
-        ...task,
-        targetDate,
-        totalCount: statisticData.totalCount,
-        type: "downloaded",
-        uniqId,
-      });
+          const failureReason = `目标日期数据加载失败：${error instanceof Error ? error.message : String(error)}`;
+          syncLogger.error("Failed to load daily Weixin Channels statistic date", {
+            accountName,
+            error: failureReason,
+            targetDate: dailyTargetDate,
+            uniqId,
+          });
+          options.sendEvent({
+            accountName,
+            failureReason,
+            message: `处理失败：${accountName}（${dailyTargetDate}，${failureReason}）`,
+            ...task,
+            targetDate: dailyTargetDate,
+            timestamp: new Date().toISOString(),
+            type: "account-failed",
+            uniqId,
+          });
+          break;
+        }
 
-      const statisticTime = `${dateRange.startDate} - ${dateRange.endDate}`;
-      syncLogger.info("Importing Weixin Channels drama statistics JSON into Daren Center", {
-        accountName,
-        filePath: savedFile.filePath,
-        statisticTime,
-        targetDate,
-        totalCount: statisticData.totalCount,
-        uniqId,
-      });
-      const importedAt = new Date().toISOString();
-      const importResult = await getDarenCenterClient().ingestWeChatDramaStatistics(
-        {
-          ...statisticData.ingestPayload,
+        syncLogger.info("Fetching complete daily Weixin Channels drama statistics", {
+          accountName,
+          targetDate: dailyTargetDate,
+          uniqId,
+        });
+        const statisticData = await fetchCompleteStatisticData(page, statisticResponse);
+        const savedFile = await saveStatisticJson(statisticData.body, {
+          accountName,
+          downloadDirectory,
+          targetDate: dailyTargetDate,
+          uniqId,
+        });
+
+        syncLogger.info("Weixin Channels daily drama statistics JSON saved", {
+          accountName,
+          bytes: savedFile.bytes,
+          fetchedCount: statisticData.fetchedCount,
+          filePath: savedFile.filePath,
+          filename: savedFile.filename,
+          targetDate: dailyTargetDate,
+          totalCount: statisticData.totalCount,
+          uniqId,
+        });
+        options.sendEvent({
+          accountName,
+          fetchedCount: statisticData.fetchedCount,
+          filePath: savedFile.filePath,
+          message: `抓取完成：${savedFile.filename}（${statisticData.totalCount} 条）`,
+          ...task,
+          targetDate: dailyTargetDate,
+          totalCount: statisticData.totalCount,
+          type: "downloaded",
+          uniqId,
+        });
+
+        const statisticTime = dailyRange.startDate;
+        syncLogger.info("Importing daily Weixin Channels drama statistics into Daren Center", {
+          accountName,
+          filePath: savedFile.filePath,
           statisticTime,
-        },
-      );
+          targetDate: dailyTargetDate,
+          totalCount: statisticData.totalCount,
+          uniqId,
+        });
+        const importedAt = new Date().toISOString();
+        const importResult = await getDarenCenterClient().ingestWeChatDramaStatistics(
+          {
+            ...statisticData.ingestPayload,
+            statisticTime,
+          },
+        );
 
-      syncLogger.info("Weixin Channels drama statistics ingest completed", {
-        accountName,
-        body: importResult.body,
-        filePath: savedFile.filePath,
-        status: importResult.status,
-        statusText: importResult.statusText,
-        targetDate,
-        totalCount: statisticData.totalCount,
-        uniqId,
-      });
-      options.sendEvent({
-        accountName,
-        fetchedCount: statisticData.fetchedCount,
-        filename: savedFile.filename,
-        filePath: savedFile.filePath,
-        message: `导入完成：${accountName}（${statisticData.fetchedCount} / ${statisticData.totalCount} 条）`,
-        ...task,
-        targetDate,
-        timestamp: importedAt,
-        totalCount: statisticData.totalCount,
-        type: "imported",
-        uniqId,
-        result: importResult.body,
-      });
+        syncLogger.info("Weixin Channels daily drama statistics ingest completed", {
+          accountName,
+          body: importResult.body,
+          filePath: savedFile.filePath,
+          statisticTime,
+          status: importResult.status,
+          statusText: importResult.statusText,
+          targetDate: dailyTargetDate,
+          totalCount: statisticData.totalCount,
+          uniqId,
+        });
+        options.sendEvent({
+          accountName,
+          fetchedCount: statisticData.fetchedCount,
+          filename: savedFile.filename,
+          filePath: savedFile.filePath,
+          message: `导入完成：${accountName}（${dailyTargetDate}，${statisticData.fetchedCount} / ${statisticData.totalCount} 条）`,
+          ...task,
+          targetDate: dailyTargetDate,
+          timestamp: importedAt,
+          totalCount: statisticData.totalCount,
+          type: "imported",
+          uniqId,
+          result: importResult.body,
+        });
+      }
 
       await signOutAccount(page, options, { accountName, uniqId }, task);
     }
