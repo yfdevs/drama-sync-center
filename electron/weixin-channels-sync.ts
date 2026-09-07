@@ -78,7 +78,7 @@ const syncLogger = logger.scope("weixin-channels-sync");
 const promoteDataAnalysisDimensionLabels = [
   "订单/计划",
   "按天",
-  "短剧",
+  "短剧组件",
   "加热对象",
   "视频",
   "作者",
@@ -99,7 +99,7 @@ const promoteDataAnalysisExcludedIndicatorLabels = ["平均千次展示费用"] 
 const promoteDataAnalysisDimensionTypes = [
   20_003, // 订单/计划
   10_003, // 按天
-  20_015, // 短剧
+  20_015, // 短剧组件
   20_001, // 加热对象
   20_007, // 视频
   20_009, // 作者
