@@ -49,6 +49,7 @@ export interface WeChatDramaStatisticsPayload {
     [key: string]: unknown;
   };
   list: unknown[];
+  statisticTime: string;
   totalCount: number;
   [key: string]: unknown;
 }

@@ -641,16 +641,21 @@ async function runWeixinChannelsSyncLoop(
         uniqId,
       });
 
+      const statisticTime = `${dateRange.startDate} - ${dateRange.endDate}`;
       syncLogger.info("Importing Weixin Channels drama statistics JSON into Daren Center", {
         accountName,
         filePath: savedFile.filePath,
+        statisticTime,
         targetDate,
         totalCount: statisticData.totalCount,
         uniqId,
       });
       const importedAt = new Date().toISOString();
       const importResult = await getDarenCenterClient().ingestWeChatDramaStatistics(
-        statisticData.ingestPayload,
+        {
+          ...statisticData.ingestPayload,
+          statisticTime,
+        },
       );
 
       syncLogger.info("Weixin Channels drama statistics ingest completed", {
