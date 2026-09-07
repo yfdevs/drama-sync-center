@@ -427,6 +427,7 @@ void test('ingests the inner WeChat drama statistics payload without authenticat
     list: [{ dramaInfo: { dramaUuid: 'drama-1' } }],
     statisticTime: '2026-09-07',
     totalCount: 1,
+    wechatVideoAccountName: '视频号测试账号',
   }
 
   const result = await client.ingestWeChatDramaStatistics(statistics)

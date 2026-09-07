@@ -51,6 +51,7 @@ export interface WeChatDramaStatisticsPayload {
   list: unknown[];
   statisticTime: string;
   totalCount: number;
+  wechatVideoAccountName: string;
   [key: string]: unknown;
 }
 

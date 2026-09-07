@@ -704,6 +704,7 @@ async function runWeixinChannelsSyncLoop(
           {
             ...statisticData.ingestPayload,
             statisticTime,
+            wechatVideoAccountName: accountName,
           },
         );
 
