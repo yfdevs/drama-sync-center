@@ -723,7 +723,7 @@ function WeixinChannelsCard({
             onClick={onAssistantSync}
             type="primary"
           >
-            {assistantSyncing ? "处理中" : "助手单条剧集 Excel 数据"}
+            {assistantSyncing ? "处理中" : "助手·单条剧集 Excel 数据"}
           </Button>
           <Button
             disabled={assistantTaskRunning}
@@ -731,7 +731,7 @@ function WeixinChannelsCard({
             loading={assistantJsonSyncing}
             onClick={onAssistantJsonSync}
           >
-            {assistantJsonSyncing ? "处理中" : "助手单条剧集表格数据"}
+            {assistantJsonSyncing ? "处理中" : "助手·单条剧集表格数据"}
           </Button>
           {/* “加热明细”入口暂不对用户开放。
           <Button icon={<SyncOutlined />} disabled={promoteSyncing} loading={promoteSyncing} onClick={onPromoteSync}>
@@ -744,7 +744,7 @@ function WeixinChannelsCard({
             loading={promoteStandardSyncing}
             onClick={onPromoteStandardSync}
           >
-            {promoteStandardSyncing ? "处理中" : "标准看板"}
+            {promoteStandardSyncing ? "处理中" : "加热·标准看板"}
           </Button>
         </div>
       </div>
@@ -868,7 +868,7 @@ function WeixinSettingsDrawer({
       <div className="settings-grid">
         <DatePresetFieldset
           customRange={draft.assistantCustomDateRange}
-          label="助手 · 剧集数据"
+          label="助手·单条剧集数据（Excel / 表格共用）"
           name="assistant-date-preset"
           onChange={(assistantDatePreset) => {
             setConfigurationError(undefined);
@@ -888,29 +888,8 @@ function WeixinSettingsDrawer({
           value={draft.assistantDatePreset}
         />
         <DatePresetFieldset
-          customRange={draft.promoteCustomDateRange}
-          label="加热平台 · 数据明细"
-          name="promote-date-preset"
-          onChange={(promoteDatePreset) => {
-            setConfigurationError(undefined);
-            setDraft((current) => ({
-              ...current,
-              promoteCustomDateRange:
-                promoteDatePreset === "custom"
-                  ? (current.promoteCustomDateRange ?? createDefaultCustomDateRange())
-                  : current.promoteCustomDateRange,
-              promoteDatePreset,
-            }));
-          }}
-          onCustomRangeChange={(promoteCustomDateRange) => {
-            setConfigurationError(undefined);
-            setDraft((current) => ({ ...current, promoteCustomDateRange }));
-          }}
-          value={draft.promoteDatePreset}
-        />
-        <DatePresetFieldset
           customRange={draft.promoteStandardCustomDateRange}
-          label="加热平台 · 标准看板"
+          label="加热·标准看板"
           name="promote-standard-date-preset"
           onChange={(promoteStandardDatePreset) => {
             setConfigurationError(undefined);
@@ -1817,17 +1796,12 @@ function validateWeixinSettings(settings: WeixinChannelsSettings): string | unde
     range?: WeixinChannelsCustomDateRange;
   }> = [
     {
-      label: "助手 · 剧集数据",
+      label: "助手·单条剧集数据（Excel / 表格共用）",
       preset: settings.assistantDatePreset,
       range: settings.assistantCustomDateRange,
     },
     {
-      label: "加热平台 · 数据明细",
-      preset: settings.promoteDatePreset,
-      range: settings.promoteCustomDateRange,
-    },
-    {
-      label: "加热平台 · 标准看板",
+      label: "加热·标准看板",
       preset: settings.promoteStandardDatePreset,
       range: settings.promoteStandardCustomDateRange,
     },
