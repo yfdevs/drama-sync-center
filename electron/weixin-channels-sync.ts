@@ -1626,24 +1626,17 @@ function isPromoteDataAnalysisTableQuery(request: Request): boolean {
 }
 
 function assertPromoteDataAnalysisRequestFields(request: Request): void {
-  const payload = getPromoteDataAnalysisRequestPayload(request);
-  const actualDimensions = Array.isArray(payload?.dimensions)
-    ? payload.dimensions.map(Number)
-    : [];
-  const actualIndicators = Array.isArray(payload?.indicators)
-    ? payload.indicators.map(Number)
-    : [];
+  const { dimensions: actualDimensions, indicators: actualIndicators } =
+    getPromoteDataAnalysisRequestFields(request);
   const expectedDimensions = [...promoteDataAnalysisDimensionTypes];
   const expectedIndicators = [...promoteDataAnalysisIndicatorTypes];
-  const matches = (actual: number[], expected: number[]) =>
-    actual.length === expected.length && expected.every((value) => actual.includes(value));
 
-  if (!matches(actualDimensions, expectedDimensions)) {
+  if (!matchesPromoteDataAnalysisFields(actualDimensions, expectedDimensions)) {
     throw new Error(
       `标准看板下载维度不正确：期望 ${expectedDimensions.join(",")}，实际 ${actualDimensions.join(",")}`,
     );
   }
-  if (!matches(actualIndicators, expectedIndicators)) {
+  if (!matchesPromoteDataAnalysisFields(actualIndicators, expectedIndicators)) {
     throw new Error(
       `标准看板下载指标不正确：期望 ${expectedIndicators.join(",")}，实际 ${actualIndicators.join(",")}`,
     );
@@ -1652,6 +1645,66 @@ function assertPromoteDataAnalysisRequestFields(request: Request): void {
   syncLogger.info("Verified Weixin Channels standard data analysis request fields", {
     dimensions: actualDimensions,
     indicators: actualIndicators,
+  });
+}
+
+function getPromoteDataAnalysisRequestFields(request: Request): {
+  dimensions: number[];
+  indicators: number[];
+} {
+  const payload = getPromoteDataAnalysisRequestPayload(request);
+  const actualDimensions = Array.isArray(payload?.dimensions)
+    ? payload.dimensions.map(Number)
+    : [];
+  const actualIndicators = Array.isArray(payload?.indicators)
+    ? payload.indicators.map(Number)
+    : [];
+
+  return {
+    dimensions: actualDimensions,
+    indicators: actualIndicators,
+  };
+}
+
+function matchesPromoteDataAnalysisFields(actual: number[], expected: readonly number[]): boolean {
+  return actual.length === expected.length && expected.every((value) => actual.includes(value));
+}
+
+function doesPromoteDataAnalysisRequestHaveExpectedFields(request: Request): boolean {
+  const fields = getPromoteDataAnalysisRequestFields(request);
+  return matchesPromoteDataAnalysisFields(fields.dimensions, promoteDataAnalysisDimensionTypes) &&
+    matchesPromoteDataAnalysisFields(fields.indicators, promoteDataAnalysisIndicatorTypes);
+}
+
+async function waitForPromoteDataAnalysisResponseWithExpectedFields(
+  page: Page,
+  isTargetResponse: (response: Response) => boolean,
+  timeout: number,
+): Promise<Response> {
+  let lastUnexpectedRequest: Request | undefined;
+
+  return page.waitForResponse((response) => {
+    if (!isTargetResponse(response)) {
+      return false;
+    }
+
+    const request = response.request();
+    if (doesPromoteDataAnalysisRequestHaveExpectedFields(request)) {
+      return true;
+    }
+
+    lastUnexpectedRequest = request;
+    const fields = getPromoteDataAnalysisRequestFields(request);
+    syncLogger.warn(
+      "Ignoring Weixin Channels standard data analysis response with stale fields",
+      fields,
+    );
+    return false;
+  }, { timeout }).catch((error) => {
+    if (lastUnexpectedRequest) {
+      assertPromoteDataAnalysisRequestFields(lastUnexpectedRequest);
+    }
+    throw error;
   });
 }
 
@@ -2371,6 +2424,23 @@ function getPromoteDataAnalysisOptionRow(scope: Locator, label: string): Locator
     .last();
 }
 
+async function waitForPromoteDataAnalysisOptionState(
+  readSelected: () => Promise<boolean | undefined>,
+  label: string,
+  selected: boolean,
+): Promise<void> {
+  const deadline = Date.now() + promoteDataAnalysisResponseGraceMs;
+
+  while (Date.now() < deadline) {
+    if (await readSelected() === selected) {
+      return;
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+  }
+
+  throw new Error(`标准看板字段“${label}”未能${selected ? "选中" : "取消选中"}`);
+}
+
 async function setPromoteDataAnalysisOption(
   scope: Locator,
   label: string,
@@ -2389,25 +2459,40 @@ async function setPromoteDataAnalysisOption(
     const current = await checkbox.isChecked();
     if (current !== selected) {
       await row.click({ timeout: statisticResponseTimeoutMs });
+      await waitForPromoteDataAnalysisOptionState(
+        () => checkbox.isChecked().catch(() => undefined),
+        label,
+        selected,
+      );
     }
     return;
   }
 
   const roleCheckbox = row.getByRole("checkbox").first();
   if (await roleCheckbox.count()) {
-    const ariaChecked = await roleCheckbox.getAttribute("aria-checked");
-    if (ariaChecked === "true" || ariaChecked === "false") {
-      if ((ariaChecked === "true") !== selected) {
+    const readRoleSelected = async () => {
+      const ariaChecked = await roleCheckbox.getAttribute("aria-checked").catch(() => null);
+      return ariaChecked === "true" ? true : ariaChecked === "false" ? false : undefined;
+    };
+    const current = await readRoleSelected();
+    if (current !== undefined) {
+      if (current !== selected) {
         await row.click({ timeout: statisticResponseTimeoutMs });
+        await waitForPromoteDataAnalysisOptionState(readRoleSelected, label, selected);
       }
       return;
     }
   }
 
-  const rowAriaChecked = await row.getAttribute("aria-checked");
-  if (rowAriaChecked === "true" || rowAriaChecked === "false") {
-    if ((rowAriaChecked === "true") !== selected) {
+  const readRowSelected = async () => {
+    const ariaChecked = await row.getAttribute("aria-checked").catch(() => null);
+    return ariaChecked === "true" ? true : ariaChecked === "false" ? false : undefined;
+  };
+  const current = await readRowSelected();
+  if (current !== undefined) {
+    if (current !== selected) {
       await row.click({ timeout: statisticResponseTimeoutMs });
+      await waitForPromoteDataAnalysisOptionState(readRowSelected, label, selected);
     }
     return;
   }
@@ -2553,11 +2638,12 @@ async function configurePromoteDataAnalysisDetail(
     indicators: [...promoteDataAnalysisIndicatorLabels],
   });
 
-  const detailResponsePromise = page.waitForResponse(
+  const detailResponsePromise = waitForPromoteDataAnalysisResponseWithExpectedFields(
+    page,
     (response) =>
       isPromoteDataAnalysisTableQuery(response.request()) &&
       doesPromoteDataAnalysisRequestMatchDateRange(response.request(), range),
-    { timeout: statisticResponseTimeoutMs },
+    statisticResponseTimeoutMs,
   );
   const [detailResponse] = await Promise.all([
     detailResponsePromise,
@@ -3126,11 +3212,12 @@ async function downloadPromoteDataAnalysisFile(
     selector: 'a[title="下载"]',
   });
 
-  const targetResponsePromise = page.waitForResponse(
+  const targetResponsePromise = waitForPromoteDataAnalysisResponseWithExpectedFields(
+    page,
     (response) =>
       isPromoteDataAnalysisDownloadQuery(response.request()) &&
       doesPromoteDataAnalysisRequestMatchDateRange(response.request(), range),
-    { timeout: downloadEventTimeoutMs },
+    downloadEventTimeoutMs,
   );
   const [download, targetResponse] = await Promise.all([
     clickAndMaybeDownload(
