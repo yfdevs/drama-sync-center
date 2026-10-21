@@ -557,73 +557,92 @@ async function runWeixinChannelsSyncLoop(
           continue;
         }
 
-        syncLogger.info("Starting Weixin Channels statistic Excel download", {
-          accountName,
-          targetDate,
-          uniqId,
-        });
-        const download = await downloadStatisticFile(page, targetDate);
-        const savedFile = await saveDownloadedFile(download, {
-          accountName,
-          downloadDirectory,
-          filenamePrefix: "助手",
-          targetDate,
-          uniqId,
-        });
+        let failureStage = "数据下载或保存";
+        try {
+          syncLogger.info("Starting Weixin Channels statistic Excel download", {
+            accountName,
+            targetDate,
+            uniqId,
+          });
+          const download = await downloadStatisticFile(page, targetDate);
+          const savedFile = await saveDownloadedFile(download, {
+            accountName,
+            downloadDirectory,
+            filenamePrefix: "助手",
+            targetDate,
+            uniqId,
+          });
 
-        syncLogger.info("Weixin Channels statistic Excel download saved", {
-          accountName,
-          bytes: savedFile.bytes,
-          filePath: savedFile.filePath,
-          filename: savedFile.filename,
-          suggestedFilename: savedFile.suggestedFilename,
-          targetDate,
-          uniqId,
-        });
-        options.sendEvent({
-          accountName,
-          filePath: savedFile.filePath,
-          message: `Excel 下载完成：${savedFile.filename}`,
-          ...task,
-          targetDate,
-          type: "downloaded",
-          uniqId,
-        });
+          syncLogger.info("Weixin Channels statistic Excel download saved", {
+            accountName,
+            bytes: savedFile.bytes,
+            filePath: savedFile.filePath,
+            filename: savedFile.filename,
+            suggestedFilename: savedFile.suggestedFilename,
+            targetDate,
+            uniqId,
+          });
+          options.sendEvent({
+            accountName,
+            filePath: savedFile.filePath,
+            message: `Excel 下载完成：${savedFile.filename}`,
+            ...task,
+            targetDate,
+            type: "downloaded",
+            uniqId,
+          });
 
-        syncLogger.info("Importing Weixin Channels statistic Excel into Daren Center", {
-          accountName,
-          filePath: savedFile.filePath,
-          targetDate,
-          uniqId,
-        });
-        const importedAt = new Date().toISOString();
-        const importResult = await importAssistantExcelFile(savedFile, {
-          sourceName: settings.assistantUseTestImportSource ? testImportSourceName : accountName,
-        });
+          syncLogger.info("Importing Weixin Channels statistic Excel into Daren Center", {
+            accountName,
+            filePath: savedFile.filePath,
+            targetDate,
+            uniqId,
+          });
+          failureStage = "数据导入";
+          const importedAt = new Date().toISOString();
+          const importResult = await importAssistantExcelFile(savedFile, {
+            sourceName: settings.assistantUseTestImportSource ? testImportSourceName : accountName,
+          });
 
-        syncLogger.info("Weixin Channels statistic Excel import completed", {
-          accountName,
-          body: importResult.result.body,
-          filePath: savedFile.filePath,
-          sourceId: importResult.sourceId,
-          status: importResult.result.status,
-          statusText: importResult.result.statusText,
-          targetDate,
-          uniqId,
-        });
-        options.sendEvent({
-          accountName,
-          filename: savedFile.filename,
-          filePath: savedFile.filePath,
-          message: `Excel 导入完成：${accountName}`,
-          result: importResult.result.body,
-          sourceId: importResult.sourceId,
-          ...task,
-          targetDate,
-          timestamp: importedAt,
-          type: "imported",
-          uniqId,
-        });
+          syncLogger.info("Weixin Channels statistic Excel import completed", {
+            accountName,
+            body: importResult.result.body,
+            filePath: savedFile.filePath,
+            sourceId: importResult.sourceId,
+            status: importResult.result.status,
+            statusText: importResult.result.statusText,
+            targetDate,
+            uniqId,
+          });
+          options.sendEvent({
+            accountName,
+            filename: savedFile.filename,
+            filePath: savedFile.filePath,
+            message: `Excel 导入完成：${accountName}`,
+            result: importResult.result.body,
+            sourceId: importResult.sourceId,
+            ...task,
+            targetDate,
+            timestamp: importedAt,
+            type: "imported",
+            uniqId,
+          });
+        } catch (error) {
+          if (!signal.aborted) {
+            const failureReason = `助手 Excel ${failureStage}失败：${error instanceof Error ? error.message : String(error)}`;
+            options.sendEvent({
+              accountName,
+              failureReason,
+              message: `处理失败：${accountName}（${targetDate}，${failureReason}）`,
+              ...task,
+              targetDate,
+              timestamp: new Date().toISOString(),
+              type: "account-failed",
+              uniqId,
+            });
+          }
+          throw error;
+        }
 
         await signOutAccount(page, options, { accountName, uniqId }, task);
         continue;
@@ -659,84 +678,103 @@ async function runWeixinChannelsSyncLoop(
           break;
         }
 
-        syncLogger.info("Fetching complete daily Weixin Channels drama statistics", {
-          accountName,
-          targetDate: dailyTargetDate,
-          uniqId,
-        });
-        const statisticData = await fetchCompleteStatisticData(page, statisticResponse);
-        const savedFile = await saveStatisticJson(statisticData.body, {
-          accountName,
-          downloadDirectory,
-          targetDate: dailyTargetDate,
-          uniqId,
-        });
+        let failureStage = "数据抓取或保存";
+        try {
+          syncLogger.info("Fetching complete daily Weixin Channels drama statistics", {
+            accountName,
+            targetDate: dailyTargetDate,
+            uniqId,
+          });
+          const statisticData = await fetchCompleteStatisticData(page, statisticResponse);
+          const savedFile = await saveStatisticJson(statisticData.body, {
+            accountName,
+            downloadDirectory,
+            targetDate: dailyTargetDate,
+            uniqId,
+          });
 
-        syncLogger.info("Weixin Channels daily drama statistics JSON saved", {
-          accountName,
-          bytes: savedFile.bytes,
-          fetchedCount: statisticData.fetchedCount,
-          filePath: savedFile.filePath,
-          filename: savedFile.filename,
-          targetDate: dailyTargetDate,
-          totalCount: statisticData.totalCount,
-          uniqId,
-        });
-        options.sendEvent({
-          accountName,
-          fetchedCount: statisticData.fetchedCount,
-          filePath: savedFile.filePath,
-          message: `抓取完成：${savedFile.filename}（${statisticData.totalCount} 条）`,
-          ...task,
-          targetDate: dailyTargetDate,
-          totalCount: statisticData.totalCount,
-          type: "downloaded",
-          uniqId,
-        });
+          syncLogger.info("Weixin Channels daily drama statistics JSON saved", {
+            accountName,
+            bytes: savedFile.bytes,
+            fetchedCount: statisticData.fetchedCount,
+            filePath: savedFile.filePath,
+            filename: savedFile.filename,
+            targetDate: dailyTargetDate,
+            totalCount: statisticData.totalCount,
+            uniqId,
+          });
+          options.sendEvent({
+            accountName,
+            fetchedCount: statisticData.fetchedCount,
+            filePath: savedFile.filePath,
+            message: `抓取完成：${savedFile.filename}（${statisticData.totalCount} 条）`,
+            ...task,
+            targetDate: dailyTargetDate,
+            totalCount: statisticData.totalCount,
+            type: "downloaded",
+            uniqId,
+          });
 
-        const statisticTime = dailyRange.startDate;
-        syncLogger.info("Importing daily Weixin Channels drama statistics into Daren Center", {
-          accountName,
-          filePath: savedFile.filePath,
-          statisticTime,
-          targetDate: dailyTargetDate,
-          totalCount: statisticData.totalCount,
-          uniqId,
-        });
-        const importedAt = new Date().toISOString();
-        const importResult = await getDarenCenterClient().ingestWeChatDramaStatistics(
-          {
-            ...statisticData.ingestPayload,
+          const statisticTime = dailyRange.startDate;
+          syncLogger.info("Importing daily Weixin Channels drama statistics into Daren Center", {
+            accountName,
+            filePath: savedFile.filePath,
             statisticTime,
-            wechatVideoAccountName: accountName,
-          },
-        );
+            targetDate: dailyTargetDate,
+            totalCount: statisticData.totalCount,
+            uniqId,
+          });
+          failureStage = "数据导入";
+          const importedAt = new Date().toISOString();
+          const importResult = await getDarenCenterClient().ingestWeChatDramaStatistics(
+            {
+              ...statisticData.ingestPayload,
+              statisticTime,
+              wechatVideoAccountName: accountName,
+            },
+          );
 
-        syncLogger.info("Weixin Channels daily drama statistics ingest completed", {
-          accountName,
-          body: importResult.body,
-          filePath: savedFile.filePath,
-          statisticTime,
-          status: importResult.status,
-          statusText: importResult.statusText,
-          targetDate: dailyTargetDate,
-          totalCount: statisticData.totalCount,
-          uniqId,
-        });
-        options.sendEvent({
-          accountName,
-          fetchedCount: statisticData.fetchedCount,
-          filename: savedFile.filename,
-          filePath: savedFile.filePath,
-          message: `导入完成：${accountName}（${dailyTargetDate}，${statisticData.fetchedCount} / ${statisticData.totalCount} 条）`,
-          ...task,
-          targetDate: dailyTargetDate,
-          timestamp: importedAt,
-          totalCount: statisticData.totalCount,
-          type: "imported",
-          uniqId,
-          result: importResult.body,
-        });
+          syncLogger.info("Weixin Channels daily drama statistics ingest completed", {
+            accountName,
+            body: importResult.body,
+            filePath: savedFile.filePath,
+            statisticTime,
+            status: importResult.status,
+            statusText: importResult.statusText,
+            targetDate: dailyTargetDate,
+            totalCount: statisticData.totalCount,
+            uniqId,
+          });
+          options.sendEvent({
+            accountName,
+            fetchedCount: statisticData.fetchedCount,
+            filename: savedFile.filename,
+            filePath: savedFile.filePath,
+            message: `导入完成：${accountName}（${dailyTargetDate}，${statisticData.fetchedCount} / ${statisticData.totalCount} 条）`,
+            ...task,
+            targetDate: dailyTargetDate,
+            timestamp: importedAt,
+            totalCount: statisticData.totalCount,
+            type: "imported",
+            uniqId,
+            result: importResult.body,
+          });
+        } catch (error) {
+          if (!signal.aborted) {
+            const failureReason = `助手表格${failureStage}失败：${error instanceof Error ? error.message : String(error)}`;
+            options.sendEvent({
+              accountName,
+              failureReason,
+              message: `处理失败：${accountName}（${dailyTargetDate}，${failureReason}）`,
+              ...task,
+              targetDate: dailyTargetDate,
+              timestamp: new Date().toISOString(),
+              type: "account-failed",
+              uniqId,
+            });
+          }
+          throw error;
+        }
       }
 
       await signOutAccount(page, options, { accountName, uniqId }, task);
