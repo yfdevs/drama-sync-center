@@ -1,6 +1,6 @@
 {
   "name": "drama-sync-center",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "private": true,
   "author": {
     "name": "李雨锋",
@@ -13,6 +13,7 @@
     "dev": "vp run app-dev",
     "build": "vp run app-package",
     "lint": "vp lint",
+    "test:weixin-options": "node --test electron/tests/weixin-channels-options.test.mjs",
     "preview": "vp preview",
     "release": "node scripts/create-release.mjs",
     "secret:update": "pwsh -NoProfile -File scripts/update-production-env-secret.ps1"

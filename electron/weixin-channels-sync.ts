@@ -18,6 +18,11 @@ import type {
   WeixinChannelsSyncMode,
 } from "./shared";
 import { storeService } from "./store";
+import {
+  clearPromoteDataAnalysisDimensions,
+  getPromoteDataAnalysisExactLabelPattern,
+  setPromoteDataAnalysisOption,
+} from "./weixin-channels-options";
 
 interface StartWeixinChannelsSyncOptions {
   sendEvent(event: WeixinChannelsSyncEvent): void;
@@ -2468,101 +2473,6 @@ function getPromoteDataAnalysisLabelPattern(label: string): RegExp {
   return new RegExp(escapedLabel, "u");
 }
 
-function getPromoteDataAnalysisExactLabelPattern(label: string): RegExp {
-  const normalizedLabel = label.replace(/\s+/gu, "").split("");
-  const escapedLabel = normalizedLabel
-    .map((character) => character.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("\\s*");
-  return new RegExp(`^\\s*${escapedLabel}\\s*$`, "u");
-}
-
-function getPromoteDataAnalysisOptionRow(scope: Locator, label: string): Locator {
-  return scope
-    .locator("div.inline-flex.cursor-pointer")
-    // Dimension names overlap: “视频” also occurs inside
-    // “短视频加热直播间素材”. A fuzzy match selected the latter (dimension
-    // 20011) and made the requested short-drama dimension combination return
-    // no rows. Match the complete row label so “视频” resolves to 20007.
-    .filter({ hasText: getPromoteDataAnalysisExactLabelPattern(label) })
-    .last();
-}
-
-async function waitForPromoteDataAnalysisOptionState(
-  readSelected: () => Promise<boolean | undefined>,
-  label: string,
-  selected: boolean,
-): Promise<void> {
-  const deadline = Date.now() + promoteDataAnalysisResponseGraceMs;
-
-  while (Date.now() < deadline) {
-    if (await readSelected() === selected) {
-      return;
-    }
-    await new Promise<void>((resolve) => setTimeout(resolve, 100));
-  }
-
-  throw new Error(`标准看板字段“${label}”未能${selected ? "选中" : "取消选中"}`);
-}
-
-async function setPromoteDataAnalysisOption(
-  scope: Locator,
-  label: string,
-  selected: boolean,
-): Promise<void> {
-  const row = getPromoteDataAnalysisOptionRow(scope, label);
-  await row.waitFor({
-    state: "visible",
-    timeout: statisticResponseTimeoutMs,
-  }).catch(() => {
-    throw new Error(`标准看板字段配置中未找到“${label}”`);
-  });
-
-  const checkbox = row.locator('input[type="checkbox"]').first();
-  if (await checkbox.count()) {
-    const current = await checkbox.isChecked();
-    if (current !== selected) {
-      await row.click({ timeout: statisticResponseTimeoutMs });
-      await waitForPromoteDataAnalysisOptionState(
-        () => checkbox.isChecked().catch(() => undefined),
-        label,
-        selected,
-      );
-    }
-    return;
-  }
-
-  const roleCheckbox = row.getByRole("checkbox").first();
-  if (await roleCheckbox.count()) {
-    const readRoleSelected = async () => {
-      const ariaChecked = await roleCheckbox.getAttribute("aria-checked").catch(() => null);
-      return ariaChecked === "true" ? true : ariaChecked === "false" ? false : undefined;
-    };
-    const current = await readRoleSelected();
-    if (current !== undefined) {
-      if (current !== selected) {
-        await row.click({ timeout: statisticResponseTimeoutMs });
-        await waitForPromoteDataAnalysisOptionState(readRoleSelected, label, selected);
-      }
-      return;
-    }
-  }
-
-  const readRowSelected = async () => {
-    const ariaChecked = await row.getAttribute("aria-checked").catch(() => null);
-    return ariaChecked === "true" ? true : ariaChecked === "false" ? false : undefined;
-  };
-  const current = await readRowSelected();
-  if (current !== undefined) {
-    if (current !== selected) {
-      await row.click({ timeout: statisticResponseTimeoutMs });
-      await waitForPromoteDataAnalysisOptionState(readRowSelected, label, selected);
-    }
-    return;
-  }
-
-  throw new Error(`标准看板字段配置中无法读取“${label}”的选中状态`);
-}
-
 async function setPromoteDataAnalysisIndicatorBySearch(
   dialog: Locator,
   label: string,
@@ -2671,12 +2581,7 @@ async function configurePromoteDataAnalysisDetail(
 
   // The dimensions panel exposes a real “清空” action. Start from an empty
   // selection so repeated sync runs always produce the requested CSV schema.
-  const clearDimensions = dimensionContent.getByText("清空", { exact: true }).first();
-  await clearDimensions.waitFor({
-    state: "visible",
-    timeout: statisticResponseTimeoutMs,
-  });
-  await clearDimensions.click({ timeout: statisticResponseTimeoutMs });
+  await clearPromoteDataAnalysisDimensions(dimensionContent);
 
   for (const label of promoteDataAnalysisDimensionLabels) {
     await setPromoteDataAnalysisOption(dimensionContent, label, true);
