@@ -249,18 +249,13 @@ export class DarenCenterClient {
     options: ImportDramaHeatingActionsOptions,
   ): Promise<RequestResult<ImportDramaHeatingActionsResult>> {
     const formData = new FormData();
-    const filename =
-      options.filename ??
-      ("name" in options.file && typeof options.file.name === "string"
-        ? options.file.name
-        : "drama-heating-actions.csv");
-
-    formData.append("file", options.file, filename);
+    // The backend validates the multipart filename. Local archive names include
+    // the account and date and can exceed its limit; keep the upload name short.
+    formData.append("file", options.file, "data.csv");
 
     return this.request<ImportDramaHeatingActionsResult, FormData>(
       "/api/b/drama-heating/actions/import",
       {
-        authenticated: false,
         body: formData,
         method: "POST",
       },

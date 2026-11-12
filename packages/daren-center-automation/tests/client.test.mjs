@@ -319,7 +319,7 @@ void test('uploads Kuaishou records with the dedicated file field and refreshes 
   assert.equal(uploadedFile.name, '快手数据.xlsx')
 })
 
-void test('uploads drama heating actions as an anonymous CSV request', async () => {
+void test('uploads drama heating actions with authentication and a short filename', async () => {
   const calls = []
   const client = new DarenCenterClient(
     {
@@ -370,23 +370,25 @@ void test('uploads drama heating actions as an anonymous CSV request', async () 
     file: new Blob(['account,date,amount\nexample,2026-08-12,1'], {
       type: 'text/csv',
     }),
-    filename: '数据明细.csv',
+    filename: '加热平台标准看板_去码头整点漫剧_13109960320756515_2026-09-22_数据明细.csv',
   })
 
   assert.deepEqual(result.body.data, {
     receivedCount: 67,
     savedCount: 67,
   })
-  assert.equal(calls.length, 1)
-  assert.equal(calls[0].url.pathname, '/api/b/drama-heating/actions/import')
-  assert.equal(new Headers(calls[0].init.headers).has('authorization'), false)
-  assert.equal(new Headers(calls[0].init.headers).has('content-type'), false)
-  assert.ok(calls[0].init.body instanceof FormData)
+  assert.equal(calls.length, 2)
+  assert.equal(calls[0].url.pathname, '/api/b/auth/login')
+  assert.equal(calls[1].url.pathname, '/api/b/drama-heating/actions/import')
+  assert.equal(new Headers(calls[1].init.headers).get('authorization'), 'heating-token')
+  assert.equal(new Headers(calls[1].init.headers).has('content-type'), false)
+  assert.ok(calls[1].init.body instanceof FormData)
 
-  const uploadedFile = calls[0].init.body.get('file')
+  const uploadedFile = calls[1].init.body.get('file')
   assert.ok(uploadedFile instanceof Blob)
-  assert.equal(uploadedFile.name, '数据明细.csv')
+  assert.equal(uploadedFile.name, 'data.csv')
   assert.equal(uploadedFile.type, 'text/csv')
+  assert.equal(await uploadedFile.text(), 'account,date,amount\nexample,2026-08-12,1')
 })
 
 void test('ingests the inner WeChat drama statistics payload without authentication', async () => {
